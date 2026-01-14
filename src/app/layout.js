@@ -1,7 +1,7 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "Prisync",
+  title: "PrisMap",
   description: "Collaborative Whiteboard",
 };
 
@@ -12,3 +12,4 @@ export default function RootLayout({ children }) {
     </html>
   );
 }
+

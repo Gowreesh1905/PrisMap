@@ -1,8 +1,13 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-html, body {
-  height: 100%;
-  background-color: #f9fafb; /* Light gray background */
+@theme {
+  --color-primary: #4f46e5; /* Indigo 600 */
+  --color-bg-base: #f9fafb;
 }
+
+html,
+body {
+  height: 100%;
+  background-color: var(--color-bg-base);
+}
+
