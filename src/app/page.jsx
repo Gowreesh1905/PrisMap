@@ -16,21 +16,28 @@ export default function LoginPage() {
       router.push("/dashboard");
     } catch (error) {
       console.error("Login failed:", error);
-      alert("Login failed. Please try again.");
+      // Optional: Display a user-friendly error message here
       setLoading(false);
     }
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#F9FAFB]">
+    // Added 'bg-slate-50' for a slightly cleaner background base
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-50">
       
-      {/* --- Background Blobs (The "Aura") --- */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-indigo-300/30 rounded-full blur-[120px] mix-blend-multiply animate-pulse" />
-      <div className="absolute top-1/2 left-1/2 -translate-x-[40%] -translate-y-[60%] w-[500px] h-[500px] bg-teal-200/30 rounded-full blur-[100px] mix-blend-multiply" />
-      <div className="absolute top-1/2 left-1/2 -translate-x-[60%] -translate-y-[40%] w-[500px] h-[500px] bg-purple-200/30 rounded-full blur-[100px] mix-blend-multiply" />
+      {/* --- Updated Background Blobs (Bolder & Sharper) --- */}
+      {/* Blob 1: Indigo (Center, pulsing) - Lower blur, higher opacity */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] bg-indigo-500/40 rounded-full blur-[80px] mix-blend-multiply animate-pulse" />
+      
+      {/* Blob 2: Teal (Top Right) - Lower blur, higher opacity */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-[30%] -translate-y-[60%] w-[600px] h-[600px] bg-teal-400/40 rounded-full blur-[60px] mix-blend-multiply" />
+      
+      {/* Blob 3: Purple (Bottom Left) - Lower blur, higher opacity */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-[70%] -translate-y-[30%] w-[600px] h-[600px] bg-purple-400/40 rounded-full blur-[60px] mix-blend-multiply" />
 
-      {/* --- The Glass Card --- */}
-      <div className="relative z-10 w-full max-w-md p-10 bg-white/60 backdrop-blur-2xl border border-white/50 shadow-2xl rounded-3xl text-center">
+
+      {/* --- The Glass Card (Unchanged) --- */}
+      <div className="relative z-10 w-full max-w-md p-10 bg-white/70 backdrop-blur-3xl border border-white/50 shadow-2xl shadow-indigo-500/10 rounded-3xl text-center">
         
         {/* Logo Section */}
         <div className="mb-8">
@@ -43,16 +50,16 @@ export default function LoginPage() {
         </div>
 
         {/* Divider */}
-        <div className="w-16 h-1 bg-gradient-to-r from-indigo-500/20 to-purple-500/20 rounded-full mx-auto mb-8" />
+        <div className="w-16 h-1 bg-gradient-to-r from-indigo-500/30 to-purple-500/30 rounded-full mx-auto mb-8" />
 
         {/* The Button */}
         <button
           onClick={handleLogin}
           disabled={loading}
-          className="group relative w-full flex items-center justify-center gap-3 bg-white hover:bg-indigo-50/50 border border-slate-200 hover:border-indigo-200 text-slate-700 font-semibold py-4 rounded-2xl transition-all duration-300 shadow-sm hover:shadow-indigo-500/10 hover:-translate-y-0.5 active:scale-[0.98]"
+          className="group relative w-full flex items-center justify-center gap-3 bg-white hover:bg-indigo-50/50 border border-slate-200 hover:border-indigo-300 text-slate-700 font-semibold py-4 rounded-2xl transition-all duration-300 shadow-sm hover:shadow-lg hover:shadow-indigo-500/20 hover:-translate-y-0.5 active:scale-[0.98]"
         >
           {loading ? (
-            <span className="text-sm text-indigo-500">Connecting...</span>
+            <span className="text-sm text-indigo-600 font-medium">Connecting...</span>
           ) : (
             <>
               {/* Google SVG Icon */}
