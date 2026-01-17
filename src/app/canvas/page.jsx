@@ -4,12 +4,12 @@
 
 'use client';
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Stage, Layer, Line, Rect, Circle, Star, RegularPolygon, Text, Arrow } from 'react-konva';
 import {
     MousePointer2, Pencil, Type, Square, Circle as CircleIcon, Triangle,
     Star as StarIcon, ArrowRight, Minus, Hexagon, Pentagon, Trash2,
-    ZoomIn, ZoomOut, Maximize2
+    ZoomIn, ZoomOut, Maximize2, Eraser, Undo, Redo
 } from 'lucide-react';
 
 const CANVAS_WIDTH = typeof window !== 'undefined' ? window.innerWidth - 480 : 1200;
@@ -22,6 +22,8 @@ export default function CanvasPage() {
     const stageRef = useRef(null);
     const [tool, setTool] = useState('pen');
     const [elements, setElements] = useState([]);
+    const [history, setHistory] = useState([[]]);
+    const [historyStep, setHistoryStep] = useState(0);
     const [isDrawing, setIsDrawing] = useState(false);
     const [currentPoints, setCurrentPoints] = useState([]);
     const [selectedId, setSelectedId] = useState(null);
@@ -34,6 +36,59 @@ export default function CanvasPage() {
     // Zoom and pan
     const [stageScale, setStageScale] = useState(1);
     const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
+
+    /**
+     * Save current state to history
+     */
+    const saveToHistory = useCallback((newElements) => {
+        const newHistory = history.slice(0, historyStep + 1);
+        newHistory.push(newElements);
+        setHistory(newHistory);
+        setHistoryStep(newHistory.length - 1);
+        setElements(newElements);
+    }, [history, historyStep]);
+
+    /**
+     * Undo last action
+     */
+    const undo = useCallback(() => {
+        if (historyStep > 0) {
+            const newStep = historyStep - 1;
+            setHistoryStep(newStep);
+            setElements(history[newStep]);
+            setSelectedId(null);
+        }
+    }, [history, historyStep]);
+
+    /**
+     * Redo last undone action
+     */
+    const redo = useCallback(() => {
+        if (historyStep < history.length - 1) {
+            const newStep = historyStep + 1;
+            setHistoryStep(newStep);
+            setElements(history[newStep]);
+            setSelectedId(null);
+        }
+    }, [history, historyStep]);
+
+    /**
+     * Keyboard shortcuts
+     */
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'z') {
+                e.preventDefault();
+                undo();
+            } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) {
+                e.preventDefault();
+                redo();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [undo, redo]);
 
     /**
      * Handle mouse down - start drawing
@@ -54,7 +109,7 @@ export default function CanvasPage() {
             y: (point.y - stagePos.y) / stageScale,
         };
 
-        if (tool === 'pen') {
+        if (tool === 'pen' || tool === 'eraser') {
             setIsDrawing(true);
             setCurrentPoints([adjustedPoint.x, adjustedPoint.y]);
         } else if (tool === 'text') {
@@ -67,7 +122,7 @@ export default function CanvasPage() {
                 fontSize: 24,
                 fill: strokeColor,
             };
-            setElements([...elements, newText]);
+            saveToHistory([...elements, newText]);
             setSelectedId(newText.id);
         } else {
             setIsDrawing(true);
@@ -88,8 +143,63 @@ export default function CanvasPage() {
             y: (point.y - stagePos.y) / stageScale,
         };
 
-        if (tool === 'pen') {
+        if (tool === 'pen' || tool === 'eraser') {
             setCurrentPoints([...currentPoints, adjustedPoint.x, adjustedPoint.y]);
+
+            // For eraser, split strokes at intersection points
+            if (tool === 'eraser' && currentPoints.length >= 2) {
+                const eraserRadius = strokeWidth * 3;
+                const newElements = [];
+                let segmentCounter = 0;
+
+                elements.forEach(el => {
+                    if (el.type !== 'pen') {
+                        newElements.push(el);
+                        return;
+                    }
+
+                    // Split the stroke into segments, removing points within eraser radius
+                    const segments = [];
+                    let currentSegment = [];
+
+                    for (let i = 0; i < el.points.length; i += 2) {
+                        const dx = el.points[i] - adjustedPoint.x;
+                        const dy = el.points[i + 1] - adjustedPoint.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+
+                        if (distance < eraserRadius) {
+                            // Point is being erased
+                            if (currentSegment.length >= 4) {
+                                // Save current segment if it has at least 2 points
+                                segments.push([...currentSegment]);
+                            }
+                            currentSegment = [];
+                        } else {
+                            // Point survives
+                            currentSegment.push(el.points[i], el.points[i + 1]);
+                        }
+                    }
+
+                    // Don't forget the last segment
+                    if (currentSegment.length >= 4) {
+                        segments.push(currentSegment);
+                    }
+
+                    // Create new stroke elements for each segment
+                    segments.forEach(segmentPoints => {
+                        newElements.push({
+                            ...el,
+                            id: `${Date.now()}-${segmentCounter++}-${Math.random()}`, // Truly unique ID
+                            points: segmentPoints,
+                        });
+                    });
+                });
+
+                if (newElements.length !== elements.length ||
+                    newElements.some((el, i) => el.id !== elements[i]?.id)) {
+                    setElements(newElements);
+                }
+            }
         } else {
             setCurrentPoints([currentPoints[0], currentPoints[1], adjustedPoint.x, adjustedPoint.y]);
         }
@@ -115,7 +225,10 @@ export default function CanvasPage() {
                 stroke: strokeColor,
                 strokeWidth: strokeWidth,
             };
-            setElements([...elements, newLine]);
+            saveToHistory([...elements, newLine]);
+        } else if (tool === 'eraser') {
+            // Save the erased state to history
+            saveToHistory(elements);
         } else if (tool !== 'select' && tool !== 'text') {
             const [x1, y1, x2, y2] = currentPoints;
             const newShape = {
@@ -129,7 +242,7 @@ export default function CanvasPage() {
                 stroke: strokeColor,
                 strokeWidth: strokeWidth,
             };
-            setElements([...elements, newShape]);
+            saveToHistory([...elements, newShape]);
         }
 
         setCurrentPoints([]);
@@ -188,26 +301,22 @@ export default function CanvasPage() {
     };
 
     /**
-     * Clear canvas
+     * Clear canvas - simple direct approach
      */
-    const clearCanvas = useCallback(() => {
-        setElements(prevElements => {
-            if (prevElements.length === 0) return prevElements;
+    const clearCanvas = () => {
+        if (!window.confirm('Clear the entire canvas?')) return;
 
-            if (window.confirm('Clear the entire canvas?')) {
-                setSelectedId(null);
-                return [];
-            }
-            return prevElements;
-        });
-    }, []);
+        setSelectedId(null);
+        saveToHistory([]);  // This will call setElements([]) internally
+    };
 
     /**
      * Delete selected element
      */
     const deleteSelected = () => {
         if (!selectedId) return;
-        setElements(elements.filter(el => el.id !== selectedId));
+        const newElements = elements.filter(el => el.id !== selectedId);
+        saveToHistory(newElements);
         setSelectedId(null);
     };
 
@@ -433,6 +542,7 @@ export default function CanvasPage() {
     const tools = [
         { id: 'select', icon: MousePointer2, label: 'Select' },
         { id: 'pen', icon: Pencil, label: 'Pen' },
+        { id: 'eraser', icon: Eraser, label: 'Eraser' },
         { id: 'text', icon: Type, label: 'Text' },
     ];
 
@@ -466,8 +576,35 @@ export default function CanvasPage() {
                     <span className="text-sm text-gray-500 font-medium">Infinite Canvas</span>
                 </div>
 
-                {/* Zoom controls */}
+                {/* Undo/Redo and Zoom controls */}
                 <div className="flex items-center gap-2">
+                    {/* Undo/Redo */}
+                    <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1 mr-2">
+                        <button
+                            onClick={undo}
+                            disabled={historyStep === 0}
+                            className={`p-2 rounded transition-colors ${historyStep === 0
+                                ? 'text-gray-300 cursor-not-allowed'
+                                : 'hover:bg-white text-gray-700'
+                                }`}
+                            title="Undo (Ctrl+Z)"
+                        >
+                            <Undo size={16} />
+                        </button>
+                        <button
+                            onClick={redo}
+                            disabled={historyStep >= history.length - 1}
+                            className={`p-2 rounded transition-colors ${historyStep >= history.length - 1
+                                ? 'text-gray-300 cursor-not-allowed'
+                                : 'hover:bg-white text-gray-700'
+                                }`}
+                            title="Redo (Ctrl+Y)"
+                        >
+                            <Redo size={16} />
+                        </button>
+                    </div>
+
+                    {/* Zoom */}
                     <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
                         <button
                             onClick={zoomOut}
@@ -578,21 +715,47 @@ export default function CanvasPage() {
                         draggable={tool === 'select' && !selectedId}
                     >
                         <Layer>
-                            {/* Grid background */}
-                            {Array.from({ length: 50 }).map((_, i) => (
-                                <React.Fragment key={`grid-${i}`}>
-                                    <Line
-                                        points={[i * 50, 0, i * 50, 5000]}
-                                        stroke="#e5e7eb"
-                                        strokeWidth={1 / stageScale}
-                                    />
-                                    <Line
-                                        points={[0, i * 50, 5000, i * 50]}
-                                        stroke="#e5e7eb"
-                                        strokeWidth={1 / stageScale}
-                                    />
-                                </React.Fragment>
-                            ))}
+                            {/* Truly infinite grid background */}
+                            {(() => {
+                                const gridSize = 50;
+                                const scaledGridSize = gridSize * stageScale;
+
+                                // Calculate visible area in canvas coordinates
+                                const startX = Math.floor((-stagePos.x / stageScale) / gridSize) * gridSize;
+                                const startY = Math.floor((-stagePos.y / stageScale) / gridSize) * gridSize;
+                                const endX = startX + Math.ceil(CANVAS_WIDTH / stageScale) + gridSize;
+                                const endY = startY + Math.ceil(CANVAS_HEIGHT / stageScale) + gridSize;
+
+                                const lines = [];
+
+                                // Vertical lines
+                                for (let x = startX; x <= endX; x += gridSize) {
+                                    lines.push(
+                                        <Line
+                                            key={`v-${x}`}
+                                            points={[x, startY - gridSize, x, endY + gridSize]}
+                                            stroke="#e5e7eb"
+                                            strokeWidth={1 / stageScale}
+                                            listening={false}
+                                        />
+                                    );
+                                }
+
+                                // Horizontal lines
+                                for (let y = startY; y <= endY; y += gridSize) {
+                                    lines.push(
+                                        <Line
+                                            key={`h-${y}`}
+                                            points={[startX - gridSize, y, endX + gridSize, y]}
+                                            stroke="#e5e7eb"
+                                            strokeWidth={1 / stageScale}
+                                            listening={false}
+                                        />
+                                    );
+                                }
+
+                                return lines;
+                            })()}
 
                             {/* Render all elements */}
                             {elements.map(renderShape)}
