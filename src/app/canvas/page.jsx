@@ -190,13 +190,17 @@ export default function CanvasPage() {
     /**
      * Clear canvas
      */
-    const clearCanvas = () => {
-        if (elements.length === 0) return;
-        if (window.confirm('Clear the entire canvas?')) {
-            setElements([]);
-            setSelectedId(null);
-        }
-    };
+    const clearCanvas = useCallback(() => {
+        setElements(prevElements => {
+            if (prevElements.length === 0) return prevElements;
+
+            if (window.confirm('Clear the entire canvas?')) {
+                setSelectedId(null);
+                return [];
+            }
+            return prevElements;
+        });
+    }, []);
 
     /**
      * Delete selected element
@@ -210,8 +214,10 @@ export default function CanvasPage() {
     /**
      * Handle text double click
      */
-    const handleTextDblClick = (id) => {
+    const handleTextDblClick = useCallback((id) => {
         const textNode = stageRef.current.findOne(`#text-${id}`);
+        if (!textNode) return;
+
         const textPosition = textNode.absolutePosition();
 
         const textarea = document.createElement('textarea');
@@ -221,7 +227,7 @@ export default function CanvasPage() {
         textarea.style.position = 'absolute';
         textarea.style.top = textPosition.y + 'px';
         textarea.style.left = textPosition.x + 'px';
-        textarea.style.width = textNode.width() + 'px';
+        textarea.style.width = Math.max(textNode.width(), 200) + 'px';
         textarea.style.fontSize = textNode.fontSize() + 'px';
         textarea.style.border = '2px solid #8b3dff';
         textarea.style.padding = '4px';
@@ -232,23 +238,35 @@ export default function CanvasPage() {
         textarea.style.resize = 'none';
         textarea.style.transformOrigin = 'left top';
         textarea.style.zIndex = '1000';
+        textarea.style.fontFamily = 'Arial';
 
         textarea.focus();
+        textarea.select();
 
-        textarea.addEventListener('keydown', (e) => {
+        const handleKeyDown = (e) => {
             if (e.key === 'Escape') {
                 document.body.removeChild(textarea);
             }
-        });
+        };
 
-        textarea.addEventListener('blur', () => {
+        const handleBlur = () => {
             const newText = textarea.value;
-            setElements(elements.map(el =>
-                el.id === id ? { ...el, text: newText } : el
-            ));
-            document.body.removeChild(textarea);
-        });
-    };
+            // Use functional update to avoid closure issues
+            setElements(prevElements =>
+                prevElements.map(el =>
+                    el.id === id ? { ...el, text: newText } : el
+                )
+            );
+            try {
+                document.body.removeChild(textarea);
+            } catch (e) {
+                // Already removed
+            }
+        };
+
+        textarea.addEventListener('keydown', handleKeyDown);
+        textarea.addEventListener('blur', handleBlur);
+    }, []);
 
     /**
      * Render shape based on type
@@ -256,12 +274,11 @@ export default function CanvasPage() {
     const renderShape = (shape) => {
         const isSelected = shape.id === selectedId;
         const commonProps = {
-            key: shape.id,
             id: `shape-${shape.id}`,
             onClick: () => tool === 'select' && setSelectedId(shape.id),
             draggable: tool === 'select',
             onDragEnd: (e) => {
-                setElements(elements.map(el =>
+                setElements(prevElements => prevElements.map(el =>
                     el.id === shape.id
                         ? { ...el, x: e.target.x(), y: e.target.y() }
                         : el
@@ -276,6 +293,7 @@ export default function CanvasPage() {
             case 'pen':
                 return (
                     <Line
+                        key={shape.id}
                         {...commonProps}
                         points={shape.points}
                         stroke={shape.stroke}
@@ -283,12 +301,14 @@ export default function CanvasPage() {
                         tension={0.5}
                         lineCap="round"
                         lineJoin="round"
+                        hitStrokeWidth={20}
                     />
                 );
 
             case 'rectangle':
                 return (
                     <Rect
+                        key={shape.id}
                         {...commonProps}
                         x={shape.x}
                         y={shape.y}
@@ -301,6 +321,7 @@ export default function CanvasPage() {
             case 'circle':
                 return (
                     <Circle
+                        key={shape.id}
                         {...commonProps}
                         x={shape.x + shape.width / 2}
                         y={shape.y + shape.height / 2}
@@ -312,6 +333,7 @@ export default function CanvasPage() {
             case 'triangle':
                 return (
                     <RegularPolygon
+                        key={shape.id}
                         {...commonProps}
                         x={shape.x + shape.width / 2}
                         y={shape.y + shape.height / 2}
@@ -324,6 +346,7 @@ export default function CanvasPage() {
             case 'star':
                 return (
                     <Star
+                        key={shape.id}
                         {...commonProps}
                         x={shape.x + shape.width / 2}
                         y={shape.y + shape.height / 2}
@@ -337,6 +360,7 @@ export default function CanvasPage() {
             case 'hexagon':
                 return (
                     <RegularPolygon
+                        key={shape.id}
                         {...commonProps}
                         x={shape.x + shape.width / 2}
                         y={shape.y + shape.height / 2}
@@ -349,6 +373,7 @@ export default function CanvasPage() {
             case 'pentagon':
                 return (
                     <RegularPolygon
+                        key={shape.id}
                         {...commonProps}
                         x={shape.x + shape.width / 2}
                         y={shape.y + shape.height / 2}
@@ -362,6 +387,7 @@ export default function CanvasPage() {
                 if (shape.width && shape.height) {
                     return (
                         <Arrow
+                            key={shape.id}
                             {...commonProps}
                             points={[shape.x, shape.y, shape.x + shape.width, shape.y + shape.height]}
                             fill={shape.fill}
@@ -376,6 +402,7 @@ export default function CanvasPage() {
                 if (shape.width && shape.height) {
                     return (
                         <Line
+                            key={shape.id}
                             {...commonProps}
                             points={[shape.x, shape.y, shape.x + shape.width, shape.y + shape.height]}
                         />
@@ -386,6 +413,7 @@ export default function CanvasPage() {
             case 'text':
                 return (
                     <Text
+                        key={shape.id}
                         {...commonProps}
                         id={`text-${shape.id}`}
                         x={shape.x}
@@ -485,8 +513,8 @@ export default function CanvasPage() {
                                         key={t.id}
                                         onClick={() => setTool(t.id)}
                                         className={`flex flex-col items-center justify-center p-3 rounded-xl transition-all ${isActive
-                                                ? 'bg-gradient-to-br from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/30'
-                                                : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
+                                            ? 'bg-gradient-to-br from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/30'
+                                            : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
                                             }`}
                                     >
                                         <Icon size={20} />
@@ -510,8 +538,8 @@ export default function CanvasPage() {
                                         key={s.id}
                                         onClick={() => setTool(s.id)}
                                         className={`flex flex-col items-center justify-center p-3 rounded-xl transition-all ${isActive
-                                                ? 'bg-gradient-to-br from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/30'
-                                                : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
+                                            ? 'bg-gradient-to-br from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/30'
+                                            : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
                                             }`}
                                     >
                                         <Icon size={20} />
