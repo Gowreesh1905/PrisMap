@@ -1,510 +1,717 @@
 /**
- * @fileoverview Professional canvas editor with pen drawing and shape tools
- * @description HTML5 Canvas-based drawing application with freehand pen tool,
- * multiple shapes, selection tool, and backend-ready data structure
+ * @fileoverview Professional infinite canvas with zoom/pan using Konva
  */
 
 'use client';
 
-import React, { useRef, useState, useEffect, useCallback } from 'react';
-import CanvasToolbar from '@/components/canvas/CanvasToolbar';
-import PropertiesPanel from '@/components/canvas/PropertiesPanel';
+import React, { useState, useRef, useCallback } from 'react';
+import { Stage, Layer, Line, Rect, Circle, Star, RegularPolygon, Text, Arrow } from 'react-konva';
+import {
+    MousePointer2, Pencil, Type, Square, Circle as CircleIcon, Triangle,
+    Star as StarIcon, ArrowRight, Minus, Hexagon, Pentagon, Trash2,
+    ZoomIn, ZoomOut, Maximize2
+} from 'lucide-react';
+
+const CANVAS_WIDTH = typeof window !== 'undefined' ? window.innerWidth - 480 : 1200;
+const CANVAS_HEIGHT = typeof window !== 'undefined' ? window.innerHeight - 56 : 800;
 
 /**
- * @typedef {Object} CanvasElement
- * @property {number} id - Unique identifier
- * @property {string} type - Element type: 'pen' | 'rectangle' | 'circle' | 'triangle' | 'star' | 'arrow' | 'line' | 'text' | 'hexagon' | 'pentagon'
- * @property {Array<{x: number, y: number}>} [points] - Points for pen drawings
- * @property {number} [x] - X position (for shapes)
- * @property {number} [y] - Y position (for shapes)
- * @property {number} [width] - Width (for shapes)
- * @property {number} [height] - Height (for shapes)
- * @property {string} strokeColor - Stroke color
- * @property {string} fillColor - Fill color
- * @property {number} strokeWidth - Stroke width
- * @property {string} [content] - Text content (for text elements)
- * @property {number} [fontSize] - Font size (for text)
- */
-
-const CANVAS_WIDTH = 1000;
-const CANVAS_HEIGHT = 700;
-
-/**
- * Canvas page component
- * @returns {JSX.Element} Canvas page
+ * Main canvas page with infinite canvas
  */
 export default function CanvasPage() {
-    const canvasRef = useRef(null);
+    const stageRef = useRef(null);
+    const [tool, setTool] = useState('pen');
     const [elements, setElements] = useState([]);
-    const [activeTool, setActiveTool] = useState('pen');
     const [isDrawing, setIsDrawing] = useState(false);
-    const [currentPath, setCurrentPath] = useState([]);
-    const [startPos, setStartPos] = useState(null);
-    const [selectedElement, setSelectedElement] = useState(null);
+    const [currentPoints, setCurrentPoints] = useState([]);
+    const [selectedId, setSelectedId] = useState(null);
 
     // Drawing settings
     const [strokeColor, setStrokeColor] = useState('#000000');
     const [fillColor, setFillColor] = useState('#8b3dff');
     const [strokeWidth, setStrokeWidth] = useState(2);
 
-    /**
-     * Get mouse position relative to canvas
-     * @param {MouseEvent} e - Mouse event
-     * @returns {{x: number, y: number}} Mouse position
-     */
-    const getMousePos = useCallback((e) => {
-        const canvas = canvasRef.current;
-        const rect = canvas.getBoundingClientRect();
-        return {
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
-        };
-    }, []);
+    // Zoom and pan
+    const [stageScale, setStageScale] = useState(1);
+    const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
 
     /**
-     * Draw a star shape
-     * @param {CanvasRenderingContext2D} ctx - Canvas context
-     * @param {number} cx - Center X
-     * @param {number} cy - Center Y
-     * @param {number} outerRadius - Outer radius
-     * @param {number} innerRadius - Inner radius
-     * @param {number} points - Number of points
-     */
-    const drawStar = (ctx, cx, cy, outerRadius, innerRadius, points = 5) => {
-        ctx.beginPath();
-        for (let i = 0; i < points * 2; i++) {
-            const radius = i % 2 === 0 ? outerRadius : innerRadius;
-            const angle = (Math.PI / points) * i - Math.PI / 2;
-            const x = cx + Math.cos(angle) * radius;
-            const y = cy + Math.sin(angle) * radius;
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-        }
-        ctx.closePath();
-    };
-
-    /**
-     * Draw a polygon
-     * @param {CanvasRenderingContext2D} ctx - Canvas context
-     * @param {number} cx - Center X
-     * @param {number} cy - Center Y
-     * @param {number} radius - Radius
-     * @param {number} sides - Number of sides
-     */
-    const drawPolygon = (ctx, cx, cy, radius, sides) => {
-        ctx.beginPath();
-        for (let i = 0; i < sides; i++) {
-            const angle = (Math.PI * 2 / sides) * i - Math.PI / 2;
-            const x = cx + Math.cos(angle) * radius;
-            const y = cy + Math.sin(angle) * radius;
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-        }
-        ctx.closePath();
-    };
-
-    /**
-     * Render all elements on canvas
-     */
-    const renderCanvas = useCallback(() => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-
-        const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-        // Render each element
-        elements.forEach((element) => {
-            ctx.strokeStyle = element.strokeColor;
-            ctx.fillStyle = element.fillColor;
-            ctx.lineWidth = element.strokeWidth;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-
-            if (element.type === 'pen' && element.points) {
-                // Draw pen path
-                if (element.points.length > 1) {
-                    ctx.beginPath();
-                    ctx.moveTo(element.points[0].x, element.points[0].y);
-                    for (let i = 1; i < element.points.length; i++) {
-                        ctx.lineTo(element.points[i].x, element.points[i].y);
-                    }
-                    ctx.stroke();
-                }
-            } else if (element.type === 'rectangle') {
-                ctx.fillRect(element.x, element.y, element.width, element.height);
-                ctx.strokeRect(element.x, element.y, element.width, element.height);
-            } else if (element.type === 'circle') {
-                const radius = Math.min(Math.abs(element.width), Math.abs(element.height)) / 2;
-                const cx = element.x + element.width / 2;
-                const cy = element.y + element.height / 2;
-                ctx.beginPath();
-                ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.stroke();
-            } else if (element.type === 'triangle') {
-                const cx = element.x + element.width / 2;
-                const cy = element.y + element.height / 2;
-                const size = Math.min(Math.abs(element.width), Math.abs(element.height)) / 2;
-                ctx.beginPath();
-                ctx.moveTo(cx, cy - size);
-                ctx.lineTo(cx - size, cy + size);
-                ctx.lineTo(cx + size, cy + size);
-                ctx.closePath();
-                ctx.fill();
-                ctx.stroke();
-            } else if (element.type === 'star') {
-                const cx = element.x + element.width / 2;
-                const cy = element.y + element.height / 2;
-                const outerRadius = Math.min(Math.abs(element.width), Math.abs(element.height)) / 2;
-                const innerRadius = outerRadius * 0.4;
-                drawStar(ctx, cx, cy, outerRadius, innerRadius);
-                ctx.fill();
-                ctx.stroke();
-            } else if (element.type === 'arrow') {
-                const headLength = 20;
-                const angle = Math.atan2(element.height, element.width);
-                ctx.beginPath();
-                ctx.moveTo(element.x, element.y);
-                ctx.lineTo(element.x + element.width, element.y + element.height);
-                ctx.stroke();
-                // Arrow head
-                ctx.beginPath();
-                ctx.moveTo(element.x + element.width, element.y + element.height);
-                ctx.lineTo(
-                    element.x + element.width - headLength * Math.cos(angle - Math.PI / 6),
-                    element.y + element.height - headLength * Math.sin(angle - Math.PI / 6)
-                );
-                ctx.moveTo(element.x + element.width, element.y + element.height);
-                ctx.lineTo(
-                    element.x + element.width - headLength * Math.cos(angle + Math.PI / 6),
-                    element.y + element.height - headLength * Math.sin(angle + Math.PI / 6)
-                );
-                ctx.stroke();
-            } else if (element.type === 'line') {
-                ctx.beginPath();
-                ctx.moveTo(element.x, element.y);
-                ctx.lineTo(element.x + element.width, element.y + element.height);
-                ctx.stroke();
-            } else if (element.type === 'hexagon') {
-                const cx = element.x + element.width / 2;
-                const cy = element.y + element.height / 2;
-                const radius = Math.min(Math.abs(element.width), Math.abs(element.height)) / 2;
-                drawPolygon(ctx, cx, cy, radius, 6);
-                ctx.fill();
-                ctx.stroke();
-            } else if (element.type === 'pentagon') {
-                const cx = element.x + element.width / 2;
-                const cy = element.y + element.height / 2;
-                const radius = Math.min(Math.abs(element.width), Math.abs(element.height)) / 2;
-                drawPolygon(ctx, cx, cy, radius, 5);
-                ctx.fill();
-                ctx.stroke();
-            } else if (element.type === 'text') {
-                ctx.font = `${element.fontSize || 24}px Arial`;
-                ctx.fillText(element.content || 'Text', element.x, element.y);
-            }
-
-            // Highlight selected element
-            if (selectedElement && selectedElement.id === element.id) {
-                ctx.strokeStyle = '#8b3dff';
-                ctx.lineWidth = 2;
-                ctx.setLineDash([5, 5]);
-                if (element.type === 'pen' && element.points && element.points.length > 0) {
-                    const xs = element.points.map(p => p.x);
-                    const ys = element.points.map(p => p.y);
-                    const minX = Math.min(...xs) - 5;
-                    const minY = Math.min(...ys) - 5;
-                    const maxX = Math.max(...xs) + 5;
-                    const maxY = Math.max(...ys) + 5;
-                    ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
-                } else if (element.x !== undefined) {
-                    ctx.strokeRect(element.x - 5, element.y - 5, element.width + 10, element.height + 10);
-                }
-                ctx.setLineDash([]);
-            }
-        });
-    }, [elements, selectedElement]);
-
-    // Re-render canvas when elements change
-    useEffect(() => {
-        renderCanvas();
-    }, [renderCanvas]);
-
-    /**
-     * Handle mouse down event
-     * @param {MouseEvent} e - Mouse event
+     * Handle mouse down - start drawing
      */
     const handleMouseDown = (e) => {
-        const pos = getMousePos(e);
-
-        if (activeTool === 'select') {
-            // Find clicked element
-            const clicked = elements.find((el) => {
-                if (el.type === 'pen' && el.points) {
-                    const xs = el.points.map(p => p.x);
-                    const ys = el.points.map(p => p.y);
-                    const minX = Math.min(...xs);
-                    const minY = Math.min(...ys);
-                    const maxX = Math.max(...xs);
-                    const maxY = Math.max(...ys);
-                    return pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY;
-                }
-                return (
-                    pos.x >= el.x &&
-                    pos.x <= el.x + el.width &&
-                    pos.y >= el.y &&
-                    pos.y <= el.y + el.height
-                );
-            });
-            setSelectedElement(clicked || null);
+        if (tool === 'select') {
+            const clickedOnEmpty = e.target === e.target.getStage();
+            if (clickedOnEmpty) {
+                setSelectedId(null);
+            }
             return;
         }
 
-        if (activeTool === 'pen') {
+        const stage = e.target.getStage();
+        const point = stage.getPointerPosition();
+        const adjustedPoint = {
+            x: (point.x - stagePos.x) / stageScale,
+            y: (point.y - stagePos.y) / stageScale,
+        };
+
+        if (tool === 'pen') {
             setIsDrawing(true);
-            setCurrentPath([pos]);
-        } else if (activeTool === 'text') {
-            const newElement = {
+            setCurrentPoints([adjustedPoint.x, adjustedPoint.y]);
+        } else if (tool === 'text') {
+            const newText = {
                 id: Date.now(),
                 type: 'text',
-                x: pos.x,
-                y: pos.y,
-                width: 200,
-                height: 30,
-                strokeColor,
-                fillColor: strokeColor,
-                strokeWidth,
-                content: 'Double click to edit',
+                x: adjustedPoint.x,
+                y: adjustedPoint.y,
+                text: 'Double click to edit',
                 fontSize: 24,
+                fill: strokeColor,
             };
-            setElements([...elements, newElement]);
-            setSelectedElement(newElement);
+            setElements([...elements, newText]);
+            setSelectedId(newText.id);
         } else {
-            // Shape tools
             setIsDrawing(true);
-            setStartPos(pos);
+            setCurrentPoints([adjustedPoint.x, adjustedPoint.y]);
         }
     };
 
     /**
-     * Handle mouse move event
-     * @param {MouseEvent} e - Mouse event
+     * Handle mouse move - continue drawing
      */
     const handleMouseMove = (e) => {
         if (!isDrawing) return;
 
-        const pos = getMousePos(e);
+        const stage = e.target.getStage();
+        const point = stage.getPointerPosition();
+        const adjustedPoint = {
+            x: (point.x - stagePos.x) / stageScale,
+            y: (point.y - stagePos.y) / stageScale,
+        };
 
-        if (activeTool === 'pen') {
-            setCurrentPath((prev) => [...prev, pos]);
-
-            // Draw current path in real-time
-            const canvas = canvasRef.current;
-            const ctx = canvas.getContext('2d');
-            renderCanvas();
-
-            ctx.strokeStyle = strokeColor;
-            ctx.lineWidth = strokeWidth;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-
-            if (currentPath.length > 0) {
-                ctx.beginPath();
-                ctx.moveTo(currentPath[0].x, currentPath[0].y);
-                currentPath.forEach((point) => ctx.lineTo(point.x, point.y));
-                ctx.lineTo(pos.x, pos.y);
-                ctx.stroke();
-            }
-        } else if (startPos) {
-            // Preview shape while dragging
-            renderCanvas();
-            const canvas = canvasRef.current;
-            const ctx = canvas.getContext('2d');
-            ctx.strokeStyle = strokeColor;
-            ctx.fillStyle = fillColor;
-            ctx.lineWidth = strokeWidth;
-
-            const width = pos.x - startPos.x;
-            const height = pos.y - startPos.y;
-
-            if (activeTool === 'rectangle') {
-                ctx.fillRect(startPos.x, startPos.y, width, height);
-                ctx.strokeRect(startPos.x, startPos.y, width, height);
-            } else if (activeTool === 'circle') {
-                const radius = Math.min(Math.abs(width), Math.abs(height)) / 2;
-                const cx = startPos.x + width / 2;
-                const cy = startPos.y + height / 2;
-                ctx.beginPath();
-                ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.stroke();
-            } else if (activeTool === 'line') {
-                ctx.beginPath();
-                ctx.moveTo(startPos.x, startPos.y);
-                ctx.lineTo(pos.x, pos.y);
-                ctx.stroke();
-            } else if (activeTool === 'arrow') {
-                const headLength = 20;
-                const angle = Math.atan2(height, width);
-                ctx.beginPath();
-                ctx.moveTo(startPos.x, startPos.y);
-                ctx.lineTo(pos.x, pos.y);
-                ctx.stroke();
-                ctx.beginPath();
-                ctx.moveTo(pos.x, pos.y);
-                ctx.lineTo(
-                    pos.x - headLength * Math.cos(angle - Math.PI / 6),
-                    pos.y - headLength * Math.sin(angle - Math.PI / 6)
-                );
-                ctx.moveTo(pos.x, pos.y);
-                ctx.lineTo(
-                    pos.x - headLength * Math.cos(angle + Math.PI / 6),
-                    pos.y - headLength * Math.sin(angle + Math.PI / 6)
-                );
-                ctx.stroke();
-            }
+        if (tool === 'pen') {
+            setCurrentPoints([...currentPoints, adjustedPoint.x, adjustedPoint.y]);
+        } else {
+            setCurrentPoints([currentPoints[0], currentPoints[1], adjustedPoint.x, adjustedPoint.y]);
         }
     };
 
     /**
-     * Handle mouse up event
+     * Handle mouse up - finish drawing
      */
-    const handleMouseUp = (e) => {
+    const handleMouseUp = () => {
         if (!isDrawing) return;
+        setIsDrawing(false);
 
-        const pos = getMousePos(e);
+        if (currentPoints.length < 4) {
+            setCurrentPoints([]);
+            return;
+        }
 
-        if (activeTool === 'pen' && currentPath.length > 1) {
-            const newElement = {
+        if (tool === 'pen') {
+            const newLine = {
                 id: Date.now(),
                 type: 'pen',
-                points: [...currentPath, pos],
-                strokeColor,
-                fillColor,
-                strokeWidth,
+                points: currentPoints,
+                stroke: strokeColor,
+                strokeWidth: strokeWidth,
             };
-            setElements([...elements, newElement]);
-            setCurrentPath([]);
-        } else if (startPos && activeTool !== 'pen') {
-            const width = pos.x - startPos.x;
-            const height = pos.y - startPos.y;
-
-            if (Math.abs(width) > 5 && Math.abs(height) > 5) {
-                const newElement = {
-                    id: Date.now(),
-                    type: activeTool,
-                    x: startPos.x,
-                    y: startPos.y,
-                    width,
-                    height,
-                    strokeColor,
-                    fillColor,
-                    strokeWidth,
-                };
-                setElements([...elements, newElement]);
-            }
-            setStartPos(null);
+            setElements([...elements, newLine]);
+        } else if (tool !== 'select' && tool !== 'text') {
+            const [x1, y1, x2, y2] = currentPoints;
+            const newShape = {
+                id: Date.now(),
+                type: tool,
+                x: Math.min(x1, x2),
+                y: Math.min(y1, y2),
+                width: Math.abs(x2 - x1),
+                height: Math.abs(y2 - y1),
+                fill: fillColor,
+                stroke: strokeColor,
+                strokeWidth: strokeWidth,
+            };
+            setElements([...elements, newShape]);
         }
 
-        setIsDrawing(false);
+        setCurrentPoints([]);
     };
 
     /**
-     * Clear all elements from canvas
+     * Handle wheel - zoom in/out
      */
-    const handleClear = () => {
+    const handleWheel = (e) => {
+        e.evt.preventDefault();
+
+        const scaleBy = 1.1;
+        const stage = stageRef.current;
+        const oldScale = stage.scaleX();
+        const pointer = stage.getPointerPosition();
+
+        const mousePointTo = {
+            x: (pointer.x - stage.x()) / oldScale,
+            y: (pointer.y - stage.y()) / oldScale,
+        };
+
+        const newScale = e.evt.deltaY < 0 ? oldScale * scaleBy : oldScale / scaleBy;
+
+        // Limit zoom
+        const limitedScale = Math.max(0.1, Math.min(5, newScale));
+
+        setStageScale(limitedScale);
+        setStagePos({
+            x: pointer.x - mousePointTo.x * limitedScale,
+            y: pointer.y - mousePointTo.y * limitedScale,
+        });
+    };
+
+    /**
+     * Zoom in
+     */
+    const zoomIn = () => {
+        const newScale = Math.min(5, stageScale * 1.2);
+        setStageScale(newScale);
+    };
+
+    /**
+     * Zoom out
+     */
+    const zoomOut = () => {
+        const newScale = Math.max(0.1, stageScale / 1.2);
+        setStageScale(newScale);
+    };
+
+    /**
+     * Reset zoom
+     */
+    const resetZoom = () => {
+        setStageScale(1);
+        setStagePos({ x: 0, y: 0 });
+    };
+
+    /**
+     * Clear canvas
+     */
+    const clearCanvas = () => {
         if (elements.length === 0) return;
         if (window.confirm('Clear the entire canvas?')) {
             setElements([]);
-            setSelectedElement(null);
+            setSelectedId(null);
         }
     };
 
     /**
      * Delete selected element
-     * @param {number} id - Element ID
      */
-    const handleDeleteElement = (id) => {
-        setElements(elements.filter((el) => el.id !== id));
-        setSelectedElement(null);
+    const deleteSelected = () => {
+        if (!selectedId) return;
+        setElements(elements.filter(el => el.id !== selectedId));
+        setSelectedId(null);
     };
 
     /**
-     * Update element properties
-     * @param {number} id - Element ID
-     * @param {Object} updates - Property updates
+     * Handle text double click
      */
-    const handleUpdateElement = (id, updates) => {
-        setElements(elements.map((el) => (el.id === id ? { ...el, ...updates } : el)));
-        if (selectedElement && selectedElement.id === id) {
-            setSelectedElement({ ...selectedElement, ...updates });
+    const handleTextDblClick = (id) => {
+        const textNode = stageRef.current.findOne(`#text-${id}`);
+        const textPosition = textNode.absolutePosition();
+
+        const textarea = document.createElement('textarea');
+        document.body.appendChild(textarea);
+
+        textarea.value = textNode.text();
+        textarea.style.position = 'absolute';
+        textarea.style.top = textPosition.y + 'px';
+        textarea.style.left = textPosition.x + 'px';
+        textarea.style.width = textNode.width() + 'px';
+        textarea.style.fontSize = textNode.fontSize() + 'px';
+        textarea.style.border = '2px solid #8b3dff';
+        textarea.style.padding = '4px';
+        textarea.style.margin = '0px';
+        textarea.style.overflow = 'hidden';
+        textarea.style.background = 'white';
+        textarea.style.outline = 'none';
+        textarea.style.resize = 'none';
+        textarea.style.transformOrigin = 'left top';
+        textarea.style.zIndex = '1000';
+
+        textarea.focus();
+
+        textarea.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                document.body.removeChild(textarea);
+            }
+        });
+
+        textarea.addEventListener('blur', () => {
+            const newText = textarea.value;
+            setElements(elements.map(el =>
+                el.id === id ? { ...el, text: newText } : el
+            ));
+            document.body.removeChild(textarea);
+        });
+    };
+
+    /**
+     * Render shape based on type
+     */
+    const renderShape = (shape) => {
+        const isSelected = shape.id === selectedId;
+        const commonProps = {
+            key: shape.id,
+            id: `shape-${shape.id}`,
+            onClick: () => tool === 'select' && setSelectedId(shape.id),
+            draggable: tool === 'select',
+            onDragEnd: (e) => {
+                setElements(elements.map(el =>
+                    el.id === shape.id
+                        ? { ...el, x: e.target.x(), y: e.target.y() }
+                        : el
+                ));
+            },
+            stroke: isSelected ? '#8b3dff' : (shape.stroke || strokeColor),
+            strokeWidth: isSelected ? strokeWidth + 2 : (shape.strokeWidth || strokeWidth),
+            dash: isSelected ? [5, 5] : undefined,
+        };
+
+        switch (shape.type) {
+            case 'pen':
+                return (
+                    <Line
+                        {...commonProps}
+                        points={shape.points}
+                        stroke={shape.stroke}
+                        strokeWidth={shape.strokeWidth}
+                        tension={0.5}
+                        lineCap="round"
+                        lineJoin="round"
+                    />
+                );
+
+            case 'rectangle':
+                return (
+                    <Rect
+                        {...commonProps}
+                        x={shape.x}
+                        y={shape.y}
+                        width={shape.width}
+                        height={shape.height}
+                        fill={shape.fill}
+                    />
+                );
+
+            case 'circle':
+                return (
+                    <Circle
+                        {...commonProps}
+                        x={shape.x + shape.width / 2}
+                        y={shape.y + shape.height / 2}
+                        radius={Math.min(shape.width, shape.height) / 2}
+                        fill={shape.fill}
+                    />
+                );
+
+            case 'triangle':
+                return (
+                    <RegularPolygon
+                        {...commonProps}
+                        x={shape.x + shape.width / 2}
+                        y={shape.y + shape.height / 2}
+                        sides={3}
+                        radius={Math.min(shape.width, shape.height) / 2}
+                        fill={shape.fill}
+                    />
+                );
+
+            case 'star':
+                return (
+                    <Star
+                        {...commonProps}
+                        x={shape.x + shape.width / 2}
+                        y={shape.y + shape.height / 2}
+                        numPoints={5}
+                        innerRadius={Math.min(shape.width, shape.height) / 4}
+                        outerRadius={Math.min(shape.width, shape.height) / 2}
+                        fill={shape.fill}
+                    />
+                );
+
+            case 'hexagon':
+                return (
+                    <RegularPolygon
+                        {...commonProps}
+                        x={shape.x + shape.width / 2}
+                        y={shape.y + shape.height / 2}
+                        sides={6}
+                        radius={Math.min(shape.width, shape.height) / 2}
+                        fill={shape.fill}
+                    />
+                );
+
+            case 'pentagon':
+                return (
+                    <RegularPolygon
+                        {...commonProps}
+                        x={shape.x + shape.width / 2}
+                        y={shape.y + shape.height / 2}
+                        sides={5}
+                        radius={Math.min(shape.width, shape.height) / 2}
+                        fill={shape.fill}
+                    />
+                );
+
+            case 'arrow':
+                if (shape.width && shape.height) {
+                    return (
+                        <Arrow
+                            {...commonProps}
+                            points={[shape.x, shape.y, shape.x + shape.width, shape.y + shape.height]}
+                            fill={shape.fill}
+                            pointerLength={20}
+                            pointerWidth={20}
+                        />
+                    );
+                }
+                return null;
+
+            case 'line':
+                if (shape.width && shape.height) {
+                    return (
+                        <Line
+                            {...commonProps}
+                            points={[shape.x, shape.y, shape.x + shape.width, shape.y + shape.height]}
+                        />
+                    );
+                }
+                return null;
+
+            case 'text':
+                return (
+                    <Text
+                        {...commonProps}
+                        id={`text-${shape.id}`}
+                        x={shape.x}
+                        y={shape.y}
+                        text={shape.text}
+                        fontSize={shape.fontSize || 24}
+                        fill={shape.fill}
+                        onDblClick={() => handleTextDblClick(shape.id)}
+                    />
+                );
+
+            default:
+                return null;
         }
     };
 
-    // Log canvas data for backend integration
-    useEffect(() => {
-        if (elements.length > 0) {
-            console.log('Canvas Data:', JSON.stringify(elements, null, 2));
-        }
-    }, [elements]);
+    const tools = [
+        { id: 'select', icon: MousePointer2, label: 'Select' },
+        { id: 'pen', icon: Pencil, label: 'Pen' },
+        { id: 'text', icon: Type, label: 'Text' },
+    ];
+
+    const shapes = [
+        { id: 'rectangle', icon: Square, label: 'Rectangle' },
+        { id: 'circle', icon: CircleIcon, label: 'Circle' },
+        { id: 'triangle', icon: Triangle, label: 'Triangle' },
+        { id: 'star', icon: StarIcon, label: 'Star' },
+        { id: 'arrow', icon: ArrowRight, label: 'Arrow' },
+        { id: 'line', icon: Minus, label: 'Line' },
+        { id: 'hexagon', icon: Hexagon, label: 'Hexagon' },
+        { id: 'pentagon', icon: Pentagon, label: 'Pentagon' },
+    ];
+
+    const selectedElement = elements.find(el => el.id === selectedId);
 
     return (
-        <div className="flex flex-col h-screen w-full overflow-hidden bg-gray-50">
+        <div className="flex flex-col h-screen w-full overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100">
             {/* Header */}
             <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6 shadow-sm">
-                <div className="flex items-center gap-2">
-                    <span className="font-bold text-xl tracking-tight text-gray-900">
-                        Pris<span className="text-purple-600">Map</span>
-                    </span>
-                    <span className="text-sm text-gray-400 font-medium">Canvas</span>
+                <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 bg-gradient-to-br from-purple-600 to-indigo-600 rounded-lg flex items-center justify-center">
+                            <span className="text-white font-bold text-sm">P</span>
+                        </div>
+                        <span className="font-bold text-lg tracking-tight text-gray-900">
+                            Pris<span className="text-purple-600">Map</span>
+                        </span>
+                    </div>
+                    <div className="h-6 w-px bg-gray-300" />
+                    <span className="text-sm text-gray-500 font-medium">Infinite Canvas</span>
                 </div>
-                <div className="flex items-center gap-2 text-sm text-gray-500">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                    <span>Auto-saved</span>
+
+                {/* Zoom controls */}
+                <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+                        <button
+                            onClick={zoomOut}
+                            className="p-2 hover:bg-white rounded transition-colors"
+                            title="Zoom Out"
+                        >
+                            <ZoomOut size={16} className="text-gray-700" />
+                        </button>
+                        <span className="px-3 text-sm font-medium text-gray-700 min-w-[60px] text-center">
+                            {Math.round(stageScale * 100)}%
+                        </span>
+                        <button
+                            onClick={zoomIn}
+                            className="p-2 hover:bg-white rounded transition-colors"
+                            title="Zoom In"
+                        >
+                            <ZoomIn size={16} className="text-gray-700" />
+                        </button>
+                        <button
+                            onClick={resetZoom}
+                            className="p-2 hover:bg-white rounded transition-colors ml-1"
+                            title="Reset Zoom"
+                        >
+                            <Maximize2 size={16} className="text-gray-700" />
+                        </button>
+                    </div>
                 </div>
             </header>
 
-            {/* Main content */}
             <div className="flex flex-1 overflow-hidden">
                 {/* Toolbar */}
-                <CanvasToolbar
-                    activeTool={activeTool}
-                    onToolChange={setActiveTool}
-                    onClear={handleClear}
-                />
-
-                {/* Canvas area */}
-                <div className="flex-1 flex items-center justify-center bg-gray-100 p-8 overflow-auto">
-                    <div className="relative">
-                        <div className="absolute -top-6 left-0 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                            Canvas — {CANVAS_WIDTH} × {CANVAS_HEIGHT}px
+                <div className="w-[200px] bg-white border-r border-gray-200 p-4 overflow-y-auto shadow-sm">
+                    <div className="mb-6">
+                        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
+                            Tools
+                        </h3>
+                        <div className="grid grid-cols-2 gap-2">
+                            {tools.map((t) => {
+                                const Icon = t.icon;
+                                const isActive = tool === t.id;
+                                return (
+                                    <button
+                                        key={t.id}
+                                        onClick={() => setTool(t.id)}
+                                        className={`flex flex-col items-center justify-center p-3 rounded-xl transition-all ${isActive
+                                                ? 'bg-gradient-to-br from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/30'
+                                                : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
+                                            }`}
+                                    >
+                                        <Icon size={20} />
+                                        <span className="text-[9px] font-medium mt-1">{t.label}</span>
+                                    </button>
+                                );
+                            })}
                         </div>
-                        <canvas
-                            ref={canvasRef}
-                            width={CANVAS_WIDTH}
-                            height={CANVAS_HEIGHT}
-                            onMouseDown={handleMouseDown}
-                            onMouseMove={handleMouseMove}
-                            onMouseUp={handleMouseUp}
-                            onMouseLeave={handleMouseUp}
-                            className="bg-white shadow-2xl cursor-crosshair"
-                        />
+                    </div>
+
+                    <div className="mb-6">
+                        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
+                            Shapes
+                        </h3>
+                        <div className="grid grid-cols-2 gap-2">
+                            {shapes.map((s) => {
+                                const Icon = s.icon;
+                                const isActive = tool === s.id;
+                                return (
+                                    <button
+                                        key={s.id}
+                                        onClick={() => setTool(s.id)}
+                                        className={`flex flex-col items-center justify-center p-3 rounded-xl transition-all ${isActive
+                                                ? 'bg-gradient-to-br from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/30'
+                                                : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
+                                            }`}
+                                    >
+                                        <Icon size={20} />
+                                        <span className="text-[9px] font-medium mt-1">{s.label}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-gray-200">
+                        <button
+                            onClick={clearCanvas}
+                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 text-red-600 rounded-xl font-medium text-sm hover:bg-red-100 transition-colors border border-red-200"
+                        >
+                            <Trash2 size={16} />
+                            Clear Canvas
+                        </button>
                     </div>
                 </div>
 
-                {/* Properties panel */}
-                <PropertiesPanel
-                    selectedElement={selectedElement}
-                    onUpdateElement={handleUpdateElement}
-                    onDeleteElement={handleDeleteElement}
-                    strokeColor={strokeColor}
-                    fillColor={fillColor}
-                    strokeWidth={strokeWidth}
-                    onStrokeColorChange={setStrokeColor}
-                    onFillColorChange={setFillColor}
-                    onStrokeWidthChange={setStrokeWidth}
-                />
+                {/* Canvas */}
+                <div className="flex-1 overflow-hidden bg-gray-100">
+                    <Stage
+                        ref={stageRef}
+                        width={CANVAS_WIDTH}
+                        height={CANVAS_HEIGHT}
+                        onMouseDown={handleMouseDown}
+                        onMouseMove={handleMouseMove}
+                        onMouseUp={handleMouseUp}
+                        onWheel={handleWheel}
+                        scaleX={stageScale}
+                        scaleY={stageScale}
+                        x={stagePos.x}
+                        y={stagePos.y}
+                        draggable={tool === 'select' && !selectedId}
+                    >
+                        <Layer>
+                            {/* Grid background */}
+                            {Array.from({ length: 50 }).map((_, i) => (
+                                <React.Fragment key={`grid-${i}`}>
+                                    <Line
+                                        points={[i * 50, 0, i * 50, 5000]}
+                                        stroke="#e5e7eb"
+                                        strokeWidth={1 / stageScale}
+                                    />
+                                    <Line
+                                        points={[0, i * 50, 5000, i * 50]}
+                                        stroke="#e5e7eb"
+                                        strokeWidth={1 / stageScale}
+                                    />
+                                </React.Fragment>
+                            ))}
+
+                            {/* Render all elements */}
+                            {elements.map(renderShape)}
+
+                            {/* Current drawing preview */}
+                            {isDrawing && currentPoints.length >= 2 && (
+                                tool === 'pen' ? (
+                                    <Line
+                                        points={currentPoints}
+                                        stroke={strokeColor}
+                                        strokeWidth={strokeWidth}
+                                        tension={0.5}
+                                        lineCap="round"
+                                        lineJoin="round"
+                                    />
+                                ) : currentPoints.length === 4 && (
+                                    tool === 'rectangle' ? (
+                                        <Rect
+                                            x={Math.min(currentPoints[0], currentPoints[2])}
+                                            y={Math.min(currentPoints[1], currentPoints[3])}
+                                            width={Math.abs(currentPoints[2] - currentPoints[0])}
+                                            height={Math.abs(currentPoints[3] - currentPoints[1])}
+                                            fill={fillColor}
+                                            stroke={strokeColor}
+                                            strokeWidth={strokeWidth}
+                                        />
+                                    ) : tool === 'circle' ? (
+                                        <Circle
+                                            x={(currentPoints[0] + currentPoints[2]) / 2}
+                                            y={(currentPoints[1] + currentPoints[3]) / 2}
+                                            radius={Math.min(
+                                                Math.abs(currentPoints[2] - currentPoints[0]),
+                                                Math.abs(currentPoints[3] - currentPoints[1])
+                                            ) / 2}
+                                            fill={fillColor}
+                                            stroke={strokeColor}
+                                            strokeWidth={strokeWidth}
+                                        />
+                                    ) : null
+                                )
+                            )}
+                        </Layer>
+                    </Stage>
+                </div>
+
+                {/* Properties Panel */}
+                <div className="w-[280px] bg-white border-l border-gray-200 p-6 overflow-y-auto shadow-sm">
+                    <div className="mb-6">
+                        <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4">
+                            Drawing Settings
+                        </h3>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-xs font-semibold text-gray-700 mb-2 block uppercase tracking-wider">
+                                    Stroke Color
+                                </label>
+                                <div className="flex items-center gap-3">
+                                    <input
+                                        type="color"
+                                        value={strokeColor}
+                                        onChange={(e) => setStrokeColor(e.target.value)}
+                                        className="w-12 h-12 rounded-lg cursor-pointer border-2 border-gray-200"
+                                    />
+                                    <input
+                                        type="text"
+                                        value={strokeColor}
+                                        onChange={(e) => setStrokeColor(e.target.value)}
+                                        className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono uppercase"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-xs font-semibold text-gray-700 mb-2 block uppercase tracking-wider">
+                                    Fill Color
+                                </label>
+                                <div className="flex items-center gap-3">
+                                    <input
+                                        type="color"
+                                        value={fillColor}
+                                        onChange={(e) => setFillColor(e.target.value)}
+                                        className="w-12 h-12 rounded-lg cursor-pointer border-2 border-gray-200"
+                                    />
+                                    <input
+                                        type="text"
+                                        value={fillColor}
+                                        onChange={(e) => setFillColor(e.target.value)}
+                                        className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono uppercase"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-xs font-semibold text-gray-700 mb-2 block uppercase tracking-wider">
+                                    Stroke Width
+                                </label>
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="range"
+                                        min="1"
+                                        max="20"
+                                        value={strokeWidth}
+                                        onChange={(e) => setStrokeWidth(parseInt(e.target.value))}
+                                        className="flex-1"
+                                    />
+                                    <input
+                                        type="number"
+                                        value={strokeWidth}
+                                        onChange={(e) => setStrokeWidth(parseInt(e.target.value))}
+                                        className="w-16 px-2 py-1 border border-gray-200 rounded text-sm text-center"
+                                        min="1"
+                                        max="20"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {selectedElement && (
+                        <div className="pt-6 border-t border-gray-200">
+                            <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-3">
+                                Selected Element
+                            </h3>
+                            <p className="text-xs text-gray-500 capitalize mb-4">
+                                {selectedElement.type}
+                            </p>
+                            <button
+                                onClick={deleteSelected}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 text-red-600 rounded-xl font-medium text-sm hover:bg-red-100 transition-colors border border-red-200"
+                            >
+                                <Trash2 size={16} />
+                                Delete Element
+                            </button>
+                        </div>
+                    )}
+
+                    {!selectedElement && (
+                        <div className="text-center text-gray-400 mt-12">
+                            <div className="text-4xl mb-3">🎨</div>
+                            <div className="text-sm font-medium">Infinite Canvas</div>
+                            <div className="text-xs mt-2">
+                                Scroll to zoom • Drag to pan
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );
