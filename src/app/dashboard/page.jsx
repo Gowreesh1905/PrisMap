@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
-import { collection, query, where, onSnapshot, orderBy } from "firebase/firestore"; 
+import { collection, query, where, onSnapshot, orderBy } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { Plus, Layout, Loader2 } from "lucide-react";
 import Navbar from "@/components/Navbar";
@@ -48,8 +48,8 @@ export default function Dashboard() {
      * @returns {import("firebase/firestore").Unsubscribe} Cleanup function.
      */
     const q = query(
-      collection(db, "canvases"), 
-      where("ownerId", "==", user.uid), 
+      collection(db, "canvases"),
+      where("ownerId", "==", user.uid),
       orderBy("createdAt", "desc")
     );
 
@@ -86,7 +86,7 @@ export default function Dashboard() {
         <div className="absolute bottom-[-10%] right-[-10%] h-[500px] w-[500px] rounded-full bg-blue-600/10 blur-[120px]" />
       </div>
 
-      <Navbar user={user} />
+      <Navbar user={user} projects={projects} />
 
       <main className="relative z-10 mx-auto max-w-7xl px-6 pt-32 pb-20">
         <header className="mb-10 flex justify-between items-end">
@@ -96,8 +96,8 @@ export default function Dashboard() {
 
         <section className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
           {/* Create New Canvas Action Card */}
-          <button 
-            onClick={handleCreateCanvas} 
+          <button
+            onClick={handleCreateCanvas}
             className="group aspect-[4/5] flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-purple-300/20 bg-purple-500/5 hover:bg-purple-500/10 transition-all duration-300"
           >
             <div className="h-14 w-14 rounded-full bg-white/10 flex items-center justify-center text-purple-400 group-hover:scale-110 transition-transform shadow-lg shadow-purple-500/10">
@@ -108,11 +108,11 @@ export default function Dashboard() {
 
           {/* Project Mapping Area */}
           {projects.map((project) => (
-            <ProjectCard 
-              key={project.id} 
-              title={project.title} 
-              date={project.createdAt?.toDate()} 
-              id={project.id} 
+            <ProjectCard
+              key={project.id}
+              title={project.title}
+              date={project.createdAt?.toDate()}
+              id={project.id}
             />
           ))}
         </section>
@@ -147,9 +147,9 @@ export default function Dashboard() {
  */
 function ProjectCard({ title, date, id }) {
   const router = useRouter();
-  
+
   return (
-    <div 
+    <div
       onClick={() => router.push(`/canvas/${id}`)}
       className="group aspect-[4/5] cursor-pointer flex flex-col rounded-3xl bg-[var(--color-card)] ring-1 ring-[var(--color-border-ui)] hover:-translate-y-1 transition-all duration-300 hover:shadow-2xl hover:shadow-purple-500/15"
     >
