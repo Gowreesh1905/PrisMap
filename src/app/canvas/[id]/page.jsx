@@ -210,27 +210,88 @@ export default function CanvasPage() {
     }, [history, historyStep, triggerAutoSave]);
 
     /**
-     * Keyboard shortcuts
+     * Keyboard shortcuts - using capture phase to override browser defaults
      */
     useEffect(() => {
         const handleKeyDown = (e) => {
+            // Skip if editing title
             if (isEditingTitle) return;
 
-            if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'z') {
-                e.preventDefault();
+            // Don't trigger shortcuts when typing in inputs
+            const target = e.target;
+            const tagName = target.tagName.toUpperCase();
+            if (tagName === 'INPUT' || tagName === 'TEXTAREA' || target.isContentEditable) {
+                return;
+            }
+
+            let handled = false;
+
+            // Undo: Ctrl+Z
+            if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
                 undo();
-            } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) {
-                e.preventDefault();
+                handled = true;
+            }
+            // Redo: Ctrl+Y or Ctrl+Shift+Z
+            else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
                 redo();
-            } else if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-                e.preventDefault();
+                handled = true;
+            }
+            // Save: Ctrl+S
+            else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
                 saveCanvas(elements, canvasTitle);
+                handled = true;
+            }
+            // Delete: Delete or Backspace - handle inline to avoid hoisting issue
+            else if (e.key === 'Delete' || e.key === 'Backspace') {
+                if (selectedId) {
+                    // Delete selected element inline
+                    const newElements = elements.filter(el => el.id !== selectedId);
+                    saveToHistory(newElements);
+                    setSelectedId(null);
+                    handled = true;
+                }
+            }
+            // Escape: Deselect or cancel current action
+            else if (e.key === 'Escape') {
+                setSelectedId(null);
+                setIsDrawing(false);
+                setCurrentPoints([]);
+                handled = true;
+            }
+            // Number keys for tool selection (1-9) - no modifiers
+            else if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+                const toolMap = {
+                    '1': 'select',
+                    '2': 'pen',
+                    '3': 'eraser',
+                    '4': 'text',
+                    '5': 'rectangle',
+                    '6': 'circle',
+                    '7': 'triangle',
+                    '8': 'star',
+                    '9': 'arrow',
+                };
+                if (toolMap[e.key]) {
+                    setTool(toolMap[e.key]);
+                    handled = true;
+                }
+            }
+
+            // If we handled the shortcut, prevent default and stop propagation
+            if (handled) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
             }
         };
 
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [undo, redo, isEditingTitle, saveCanvas, elements, canvasTitle]);
+        // Use capture phase (true) to intercept events before other handlers
+        document.addEventListener('keydown', handleKeyDown, true);
+
+        return () => {
+            document.removeEventListener('keydown', handleKeyDown, true);
+        };
+    }, [undo, redo, isEditingTitle, saveCanvas, elements, canvasTitle, selectedId, saveToHistory]);
 
     /**
      * Handle mouse down - start drawing

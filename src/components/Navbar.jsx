@@ -66,13 +66,20 @@ export default function Navbar({ user, projects = [] }) {
     project.title?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Handle keyboard shortcut for search
+  // Handle keyboard shortcut for search and settings
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // Ctrl+K: Open search
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
         setSearchOpen(true);
       }
+      // Ctrl+,: Navigate to settings
+      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+        e.preventDefault();
+        router.push("/settings_page");
+      }
+      // Escape: Close search
       if (e.key === "Escape") {
         setSearchOpen(false);
         setSearchQuery("");
@@ -80,7 +87,7 @@ export default function Navbar({ user, projects = [] }) {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [router]);
 
   return (
     <>
