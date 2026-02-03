@@ -86,9 +86,12 @@ export default function Navbar({ user, projects = [] }) {
     <>
       <nav className="fixed top-6 left-1/2 z-50 flex w-[90%] max-w-4xl -translate-x-1/2 items-center justify-between rounded-full border border-[var(--color-border-ui)] bg-[var(--color-nav)] px-6 py-2 shadow-2xl glass-effect">
         {/* Brand Logo with Dark-Mode Glossy Effect */}
-        <div className="flex-shrink-0 text-xl font-bold tracking-tight dark:text-glossy-intellij">
+        <button
+          onClick={() => router.push("/dashboard")}
+          className="flex-shrink-0 text-xl font-bold tracking-tight dark:text-glossy-intellij hover:opacity-80 transition-opacity"
+        >
           Prisync
-        </div>
+        </button>
 
         <div className="flex-grow" />
 

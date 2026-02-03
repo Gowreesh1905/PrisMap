@@ -27,7 +27,9 @@ import {
   AlertTriangle,
   Trash2,
   X,
+  Edit2, // Added Edit2 icon
 } from "lucide-react";
+import { useSearchParams } from "next/navigation"; // Import useSearchParams
 import Navbar from "@/components/Navbar";
 
 /**
@@ -43,8 +45,10 @@ import Navbar from "@/components/Navbar";
  */
 export default function SettingsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isEditing, setIsEditing] = useState(false); // New state for edit mode
   const [user, setUser] = useState(null);
 
   // Profile form state
@@ -60,16 +64,21 @@ export default function SettingsPage() {
   const [deleting, setDeleting] = useState(false);
 
   // Auth listener
+  // Auth listener
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (curr) => {
       if (!curr) {
         router.push("/");
       } else {
         setUser(curr);
+        // Check for edit mode param
+        if (searchParams.get("edit") === "true") {
+          setIsEditing(true);
+        }
       }
     });
     return () => unsubscribeAuth();
-  }, [router]);
+  }, [router, searchParams]);
 
   // Fetch existing profile data
   useEffect(() => {
@@ -131,6 +140,9 @@ export default function SettingsPage() {
       setSaveMessage("Failed to save profile. Please try again.");
     } finally {
       setSaving(false);
+      if (!saveMessage.includes("Failed")) {
+        setIsEditing(false); // Exit edit mode on success
+      }
     }
   };
 
@@ -236,6 +248,18 @@ export default function SettingsPage() {
                 Customize how others see you
               </p>
             </div>
+
+            {/* Edit Toggle Button */}
+            <button
+              onClick={() => setIsEditing(!isEditing)}
+              className={`ml-auto flex items-center gap-2 px-4 py-2 rounded-xl border transition-all ${isEditing
+                ? "bg-purple-500/10 border-purple-500/50 text-purple-400"
+                : "bg-[var(--color-bg-base)] border-[var(--color-border-ui)] text-slate-400 hover:text-[var(--color-text-main)]"
+                }`}
+            >
+              <Edit2 size={16} />
+              <span className="text-sm font-medium">{isEditing ? "Editing" : "Edit Profile"}</span>
+            </button>
           </div>
 
           {/* Avatar Section - Read Only */}
@@ -287,7 +311,8 @@ export default function SettingsPage() {
                   value={phoneNumber}
                   onChange={(e) => setPhoneNumber(e.target.value)}
                   placeholder="+91 9876543210"
-                  className="w-full px-4 py-3 rounded-xl bg-[var(--color-bg-base)] border border-[var(--color-border-ui)] text-[var(--color-text-main)] placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all text-sm"
+                  disabled={!isEditing}
+                  className={`w-full px-4 py-3 rounded-xl bg-[var(--color-bg-base)] border border-[var(--color-border-ui)] text-[var(--color-text-main)] placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all text-sm ${!isEditing && "opacity-60 cursor-not-allowed"}`}
                 />
               </div>
             </div>
@@ -305,7 +330,8 @@ export default function SettingsPage() {
               onChange={(e) => setJobTitle(e.target.value)}
               placeholder="e.g. Software Engineer, Product Designer"
               maxLength={100}
-              className="w-full px-4 py-3 rounded-xl bg-[var(--color-bg-base)] border border-[var(--color-border-ui)] text-[var(--color-text-main)] placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all text-sm"
+              disabled={!isEditing}
+              className={`w-full px-4 py-3 rounded-xl bg-[var(--color-bg-base)] border border-[var(--color-border-ui)] text-[var(--color-text-main)] placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all text-sm ${!isEditing && "opacity-60 cursor-not-allowed"}`}
             />
           </div>
 
@@ -321,38 +347,47 @@ export default function SettingsPage() {
               placeholder="Tell us a bit about yourself..."
               maxLength={250}
               rows={4}
-              className="w-full px-4 py-3 rounded-xl bg-[var(--color-bg-base)] border border-[var(--color-border-ui)] text-[var(--color-text-main)] placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all text-sm resize-none"
+              disabled={!isEditing}
+              className={`w-full px-4 py-3 rounded-xl bg-[var(--color-bg-base)] border border-[var(--color-border-ui)] text-[var(--color-text-main)] placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all text-sm resize-none ${!isEditing && "opacity-60 cursor-not-allowed"}`}
             />
             <p className="mt-1 text-xs text-slate-500 text-right">
               {bio.length}/250 characters
             </p>
           </div>
 
-          {/* Save Button */}
-          <div className="flex items-center gap-4">
-            <button
-              onClick={handleSaveProfile}
-              disabled={saving}
-              className="flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-semibold shadow-lg shadow-purple-500/25 hover:shadow-purple-500/40 hover:-translate-y-0.5 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {saving ? (
-                <Loader2 size={18} className="animate-spin" />
-              ) : (
-                <Save size={18} />
-              )}
-              {saving ? "Saving..." : "Save Profile"}
-            </button>
-            {saveMessage && (
-              <span
-                className={`text-sm font-medium ${saveMessage.includes("success")
-                  ? "text-green-400"
-                  : "text-red-400"
-                  }`}
+          {/* Save Button - Only show when editing */}
+          {isEditing && (
+            <div className="flex items-center gap-4 animate-in fade-in slide-in-from-bottom-2">
+              <button
+                onClick={handleSaveProfile}
+                disabled={saving}
+                className="flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-semibold shadow-lg shadow-purple-500/25 hover:shadow-purple-500/40 hover:-translate-y-0.5 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {saveMessage}
-              </span>
-            )}
-          </div>
+                {saving ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <Save size={18} />
+                )}
+                {saving ? "Saving..." : "Save Changes"}
+              </button>
+              <button
+                onClick={() => {
+                  setIsEditing(false);
+                  // Reset fields to original val logic could be added here if needed
+                }}
+                disabled={saving}
+                className="px-4 py-3 rounded-xl border border-[var(--color-border-ui)] text-[var(--color-text-main)] hover:bg-[var(--color-bg-base)] transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+
+          {saveMessage && (
+            <div className={`mt-4 text-sm font-medium ${saveMessage.includes("success") || saveMessage.includes("Successfully") ? "text-green-400" : "text-red-400"}`}>
+              {saveMessage}
+            </div>
+          )}
         </section>
 
         {/* Danger Zone - Account Deletion */}
