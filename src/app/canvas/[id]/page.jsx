@@ -921,6 +921,14 @@ export default function CanvasPage() {
         textarea.addEventListener('blur', handleBlur);
     }, [elements, stageScale, stagePos]);
 
+    // Effect to trigger text editing when pendingTextEdit changes
+    useEffect(() => {
+        if (pendingTextEdit !== null) {
+            handleTextDblClick(pendingTextEdit);
+            setPendingTextEdit(null);
+        }
+    }, [pendingTextEdit, handleTextDblClick]);
+
     /**
      * Render shape based on type
      */
