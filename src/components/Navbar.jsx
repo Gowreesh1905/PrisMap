@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Search, Moon, Sun, Settings, LogOut, X } from "lucide-react";
+import { Search, Moon, Sun, Settings, LogOut, X, Keyboard } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
@@ -66,13 +66,20 @@ export default function Navbar({ user, projects = [] }) {
     project.title?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Handle keyboard shortcut for search
+  // Handle keyboard shortcut for search and settings
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // Ctrl+K: Open search
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
         setSearchOpen(true);
       }
+      // Ctrl+,: Navigate to settings
+      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+        e.preventDefault();
+        router.push("/settings_page");
+      }
+      // Escape: Close search
       if (e.key === "Escape") {
         setSearchOpen(false);
         setSearchQuery("");
@@ -80,7 +87,7 @@ export default function Navbar({ user, projects = [] }) {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [router]);
 
   return (
     <>
@@ -110,6 +117,14 @@ export default function Navbar({ user, projects = [] }) {
             className="rounded-full p-2 text-slate-400 hover:text-[var(--color-text-main)] transition-colors"
           >
             {isDark ? <Sun size={19} /> : <Moon size={19} />}
+          </button>
+          <button
+            onClick={() => router.push("/shortcuts")}
+            aria-label="Keyboard Shortcuts"
+            title="Keyboard Shortcuts"
+            className="rounded-full p-2 text-slate-400 hover:text-[var(--color-text-main)] transition-colors"
+          >
+            <Keyboard size={19} />
           </button>
           <button
             onClick={() => router.push("/settings_page")}
