@@ -57,9 +57,13 @@ export default function Dashboard() {
     const unsubscribeProjects = onSnapshot(q, (snap) => {
       setProjects(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setLoading(false);
+    }, (error) => {
+      // Ignore permission errors that happen during logout/auth persistence changes
+      if (error.code !== "permission-denied") {
+        console.error("Error fetching projects:", error);
+      }
     });
 
-    return () => unsubscribeProjects();
     return () => unsubscribeProjects();
   }, [user]);
 
