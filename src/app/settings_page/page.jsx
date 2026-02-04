@@ -34,37 +34,59 @@ import Navbar from "@/components/Navbar";
 
 /**
  * Settings Page Component.
+ * 
+ * @description
  * Allows users to manage their profile data and account settings.
- * Features:
- * - Extended profile data (avatar, bio, job title)
- * - Account deletion with confirmation
- * Uses glassmorphism design matching the dashboard aesthetic.
- *
+ * This component provides a comprehensive interface for:
+ * - Updating extended profile information (avatar, bio, job title, phone).
+ * - Toggling between "View" and "Edit" modes for profile details.
+ * - Permanently deleting the user account and all associated data (projects, canvases).
+ * 
+ * @remarks
+ * Uses glassmorphism design principles to match the dashboard aesthetic.
+ * All data persistence is handled via Firebase Firestore.
+ * 
  * @component
  * @returns {React.JSX.Element} The rendered Settings page.
  */
 export default function SettingsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  // -- State: UI & Loading --
+  /** @type {[boolean, React.Dispatch<React.SetStateAction<boolean>>]} Loading state for initial data fetch */
   const [loading, setLoading] = useState(true);
+  /** @type {[boolean, React.Dispatch<React.SetStateAction<boolean>>]} Loading state for save operations */
   const [saving, setSaving] = useState(false);
-  const [isEditing, setIsEditing] = useState(false); // New state for edit mode
+  /** @type {[boolean, React.Dispatch<React.SetStateAction<boolean>>]} Toggles view/edit mode for profile fields */
+  const [isEditing, setIsEditing] = useState(false);
+  /** @type {[import("firebase/auth").User | null, React.Dispatch<React.SetStateAction<import("firebase/auth").User | null>>]} Current authenticated user */
   const [user, setUser] = useState(null);
 
-  // Profile form state
+  // -- State: Profile Data --
+  /** @type {[string, React.Dispatch<React.SetStateAction<string>>]} Custom avatar URL string */
   const [customAvatar, setCustomAvatar] = useState("");
+  /** @type {[string, React.Dispatch<React.SetStateAction<string>>]} User biography text */
   const [bio, setBio] = useState("");
+  /** @type {[string, React.Dispatch<React.SetStateAction<string>>]} User job title/role */
   const [jobTitle, setJobTitle] = useState("");
+  /** @type {[string, React.Dispatch<React.SetStateAction<string>>]} User phone number */
   const [phoneNumber, setPhoneNumber] = useState("");
+  /** @type {[string, React.Dispatch<React.SetStateAction<string>>]} Feedback message for save operations */
   const [saveMessage, setSaveMessage] = useState("");
 
-  // Account deletion state
+  // -- State: Account Deletion --
+  /** @type {[boolean, React.Dispatch<React.SetStateAction<boolean>>]} Controls visibility of delete confirmation modal */
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  /** @type {[string, React.Dispatch<React.SetStateAction<string>>]} Input value for deletion confirmation text */
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  /** @type {[boolean, React.Dispatch<React.SetStateAction<boolean>>]} Loading state during deletion process */
   const [deleting, setDeleting] = useState(false);
 
-  // Auth listener
-  // Auth listener
+  /**
+   * Effect: Monitors authentication state.
+   * Redirects to home if no user is found.
+   * Checks URL search params to potentially enable edit mode automatically.
+   */
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (curr) => {
       if (!curr) {
@@ -80,7 +102,11 @@ export default function SettingsPage() {
     return () => unsubscribeAuth();
   }, [router, searchParams]);
 
-  // Fetch existing profile data
+  /**
+   * Effect: Fetches user profile data from Firestore.
+   * Runs when the `user` object is updated.
+   * Populates local state with existing Firestore data (avatar, bio, etc.).
+   */
   useEffect(() => {
     if (!user) return;
 
@@ -107,7 +133,16 @@ export default function SettingsPage() {
   }, [user]);
 
   /**
-   * Save profile data to Firestore users collection.
+   * Saves the updated profile data to the Firestore `users` collection.
+   * 
+   * @async
+   * @function handleSaveProfile
+   * @description
+   * 1. Validates current user existence.
+   * 2. Sets saving state.
+   * 3. Writes (merges) fields: avatar, bio, job, phone, timestamp.
+   * 4. Handles success/error feedback.
+   * 5. Exits edit mode on success.
    */
   const handleSaveProfile = async () => {
     if (!user) return;
@@ -149,8 +184,18 @@ export default function SettingsPage() {
 
 
   /**
-   * Delete all user data and sign out.
-   * Deletes all projects and user profile document.
+   * Permanently deletes the user's account and all related data.
+   * 
+   * @async
+   * @function handleDeleteAccount
+   * @description
+   * Performs the following destructive actions in a batch:
+   * 1. Queries and deletes all projects (`canvases`) owned by the user.
+   * 2. Deletes the `users` document itself.
+   * 3. Signs out the user.
+   * 4. Redirects to the landing page.
+   * 
+   * Requires `deleteConfirmText` to match "DELETE".
    */
   const handleDeleteAccount = async () => {
     if (!user || deleteConfirmText !== "DELETE") return;
@@ -188,7 +233,11 @@ export default function SettingsPage() {
     }
   };
 
-  // Get display avatar - custom if set, otherwise Google photo
+  /**
+   * Derived display avatar logic.
+   * Priority: Custom Avatar URL > Google Photo URL > DiceBear Generated Initials
+   * @type {string}
+   */
   const displayAvatar =
     customAvatar.trim() ||
     user?.photoURL ||
