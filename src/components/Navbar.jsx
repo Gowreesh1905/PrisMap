@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Search, Moon, Sun, Settings, LogOut, X } from "lucide-react";
+import { Search, Moon, Sun, Settings, LogOut, X, Keyboard } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
@@ -30,8 +30,7 @@ export default function Navbar({ user, projects = [] }) {
 
   // Initialize theme state from DOM on mount
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (document.documentElement.classList.contains("dark")) setIsDark(true);
+    setIsDark(document.documentElement.classList.contains("dark"));
   }, []);
 
   /**
@@ -67,13 +66,20 @@ export default function Navbar({ user, projects = [] }) {
     project.title?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Handle keyboard shortcut for search
+  // Handle keyboard shortcut for search and settings
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // Ctrl+K: Open search
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
         setSearchOpen(true);
       }
+      // Ctrl+,: Navigate to settings
+      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+        e.preventDefault();
+        router.push("/settings_page");
+      }
+      // Escape: Close search
       if (e.key === "Escape") {
         setSearchOpen(false);
         setSearchQuery("");
@@ -81,15 +87,18 @@ export default function Navbar({ user, projects = [] }) {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [router]);
 
   return (
     <>
       <nav className="fixed top-6 left-1/2 z-50 flex w-[90%] max-w-4xl -translate-x-1/2 items-center justify-between rounded-full border border-[var(--color-border-ui)] bg-[var(--color-nav)] px-6 py-2 shadow-2xl glass-effect">
         {/* Brand Logo with Dark-Mode Glossy Effect */}
-        <div className="flex-shrink-0 text-xl font-bold tracking-tight dark:text-glossy-intellij">
+        <button
+          onClick={() => router.push("/dashboard")}
+          className="flex-shrink-0 text-xl font-bold tracking-tight dark:text-glossy-intellij hover:opacity-80 transition-opacity"
+        >
           Prisync
-        </div>
+        </button>
 
         <div className="flex-grow" />
 
@@ -110,6 +119,14 @@ export default function Navbar({ user, projects = [] }) {
             {isDark ? <Sun size={19} /> : <Moon size={19} />}
           </button>
           <button
+            onClick={() => router.push("/shortcuts")}
+            aria-label="Keyboard Shortcuts"
+            title="Keyboard Shortcuts"
+            className="rounded-full p-2 text-slate-400 hover:text-[var(--color-text-main)] transition-colors"
+          >
+            <Keyboard size={19} />
+          </button>
+          <button
             onClick={() => router.push("/settings_page")}
             aria-label="Settings"
             className="rounded-full p-2 text-slate-400 hover:text-[var(--color-text-main)] transition-colors"
@@ -126,6 +143,7 @@ export default function Navbar({ user, projects = [] }) {
             <img
               src={user?.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${user?.email}`}
               alt="User Profile"
+              referrerPolicy="no-referrer"
               className="h-full w-full object-cover"
             />
           </button>
@@ -168,7 +186,7 @@ export default function Navbar({ user, projects = [] }) {
             <div className="max-h-80 overflow-y-auto p-2">
               {searchQuery && filteredProjects.length === 0 ? (
                 <div className="px-4 py-8 text-center text-slate-500">
-                  No projects found for &quot;{searchQuery}&quot;
+                  No projects found for "{searchQuery}"
                 </div>
               ) : searchQuery ? (
                 filteredProjects.map((project) => (
