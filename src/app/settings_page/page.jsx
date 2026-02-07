@@ -359,7 +359,10 @@ export default function SettingsPage() {
                 <input
                   type="tel"
                   value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, "");
+                    setPhoneNumber(val);
+                  }}
                   placeholder="+91 9876543210"
                   disabled={!isEditing}
                   className={`w-full px-4 py-3 rounded-xl bg-[var(--color-bg-base)] border border-[var(--color-border-ui)] text-[var(--color-text-main)] placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all text-sm ${!isEditing && "opacity-60 cursor-not-allowed"}`}
