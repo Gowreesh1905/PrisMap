@@ -1186,6 +1186,7 @@ export default function CanvasPage() {
                         width={shape.width}
                         height={shape.height}
                         fill={shape.fill}
+                        cornerRadius={shape.cornerRadius || 0}
                     />
                 );
 
@@ -1864,6 +1865,22 @@ export default function CanvasPage() {
                                                     </div>
                                                 </div>
                                             </div>
+
+                                            {/* Corner Radius - Only for rectangles */}
+                                            {selectedElement.type === 'rectangle' && (
+                                                <div className="mb-4">
+                                                    <label className="text-xs font-semibold text-gray-600 mb-1 block">Corner Radius</label>
+                                                    <div className="flex items-center gap-2">
+                                                        <input
+                                                            type="range" min="0" max="50" step="1"
+                                                            value={selectedElement.cornerRadius || 0}
+                                                            onChange={(e) => updateElementShadow({ cornerRadius: parseInt(e.target.value) })}
+                                                            className="flex-1"
+                                                        />
+                                                        <span className="text-xs w-10">{selectedElement.cornerRadius || 0}px</span>
+                                                    </div>
+                                                </div>
+                                            )}
 
                                             {/* Font Controls - Only for text elements */}
                                             {selectedElement.type === 'text' && (
