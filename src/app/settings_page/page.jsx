@@ -32,18 +32,18 @@ import {
 import { useSearchParams } from "next/navigation"; // Import useSearchParams
 import Navbar from "@/components/Navbar";
 
-// Predefined list of 10 countries with codes and names
+// Predefined list of 10 countries with codes, names, lengths, and placeholders
 const COUNTRIES = [
-  { code: "+91", name: "India", flag: "🇮🇳" },
-  { code: "+1", name: "US", flag: "🇺🇸" },
-  { code: "+44", name: "UK", flag: "🇬🇧" },
-  { code: "+1", name: "Canada", flag: "🇨🇦" },
-  { code: "+61", name: "Australia", flag: "🇦🇺" },
-  { code: "+49", name: "Germany", flag: "🇩🇪" },
-  { code: "+33", name: "France", flag: "🇫🇷" },
-  { code: "+81", name: "Japan", flag: "🇯🇵" },
-  { code: "+55", name: "Brazil", flag: "🇧🇷" },
-  { code: "+65", name: "Singapore", flag: "🇸🇬" },
+  { code: "+91", name: "India", flag: "🇮🇳", length: 10, placeholder: "9876543210" },
+  { code: "+1", name: "US", flag: "🇺🇸", length: 10, placeholder: "2025550123" },
+  { code: "+44", name: "UK", flag: "🇬🇧", length: 10, placeholder: "7911123456" },
+  { code: "+1", name: "Canada", flag: "🇨🇦", length: 10, placeholder: "4165550123" },
+  { code: "+61", name: "Australia", flag: "🇦🇺", length: 9, placeholder: "412345678" },
+  { code: "+49", name: "Germany", flag: "🇩🇪", length: 11, placeholder: "15123456789" },
+  { code: "+33", name: "France", flag: "🇫🇷", length: 9, placeholder: "612345678" },
+  { code: "+81", name: "Japan", flag: "🇯🇵", length: 10, placeholder: "9012345678" },
+  { code: "+55", name: "Brazil", flag: "🇧🇷", length: 11, placeholder: "11912345678" },
+  { code: "+65", name: "Singapore", flag: "🇸🇬", length: 8, placeholder: "81234567" },
 ];
 
 /**
@@ -87,6 +87,8 @@ export default function SettingsPage() {
   const [phoneNumber, setPhoneNumber] = useState("");
   /** @type {[string, React.Dispatch<React.SetStateAction<string>>]} Selected country code */
   const [countryCode, setCountryCode] = useState("+91");
+  /** @type {[string, React.Dispatch<React.SetStateAction<string>>]} Selected country name to handle duplicate codes */
+  const [selectedCountryName, setSelectedCountryName] = useState("India");
   /** @type {[string, React.Dispatch<React.SetStateAction<string>>]} Feedback message for save operations */
   const [saveMessage, setSaveMessage] = useState("");
 
@@ -137,7 +139,10 @@ export default function SettingsPage() {
           setBio(data.bio || "");
           setJobTitle(data.jobTitle || "");
           setPhoneNumber(data.phoneNumber || "");
-          setCountryCode(data.countryCode || "+91");
+          const savedCode = data.countryCode || "+91";
+          setCountryCode(savedCode);
+          const savedName = data.countryName || COUNTRIES.find(c => c.code === savedCode)?.name || "India";
+          setSelectedCountryName(savedName);
         }
       } catch (error) {
         console.error("Error fetching profile:", error);
@@ -181,6 +186,7 @@ export default function SettingsPage() {
           jobTitle: jobTitle.trim(),
           phoneNumber: phoneNumber.trim(),
           countryCode: countryCode,
+          countryName: selectedCountryName,
           updatedAt: serverTimestamp(),
         },
         { merge: true }
@@ -376,14 +382,25 @@ export default function SettingsPage() {
                 <label className="text-xs text-slate-500 mb-1 block">Phone Number</label>
                 <div className="flex gap-2">
                   <select
-                    value={countryCode}
-                    onChange={(e) => setCountryCode(e.target.value)}
+                    value={selectedCountryName}
+                    onChange={(e) => {
+                      const newName = e.target.value;
+                      const country = COUNTRIES.find((c) => c.name === newName);
+                      if (country) {
+                        setSelectedCountryName(newName);
+                        setCountryCode(country.code);
+                        // Truncate existing number if it exceeds new length
+                        if (phoneNumber.length > country.length) {
+                          setPhoneNumber(phoneNumber.slice(0, country.length));
+                        }
+                      }
+                    }}
                     disabled={!isEditing}
-                    className={`w-32 px-3 py-3 rounded-xl bg-[var(--color-bg-base)] border border-[var(--color-border-ui)] text-[var(--color-text-main)] focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all text-sm ${!isEditing && "opacity-60 cursor-not-allowed"}`}
+                    className={`w-40 px-3 py-3 rounded-xl bg-[var(--color-bg-base)] border border-[var(--color-border-ui)] text-[var(--color-text-main)] focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all text-sm ${!isEditing && "opacity-60 cursor-not-allowed"}`}
                   >
                     {COUNTRIES.map((c) => (
-                      <option key={`${c.name}-${c.code}`} value={c.code}>
-                        {c.flag} {c.code}
+                      <option key={`${c.name}-${c.code}`} value={c.name}>
+                        {c.flag} {c.name} ({c.code})
                       </option>
                     ))}
                   </select>
@@ -392,9 +409,13 @@ export default function SettingsPage() {
                     value={phoneNumber}
                     onChange={(e) => {
                       const val = e.target.value.replace(/\D/g, "");
-                      setPhoneNumber(val);
+                      const country = COUNTRIES.find((c) => c.name === selectedCountryName);
+                      if (country && val.length <= country.length) {
+                        setPhoneNumber(val);
+                      }
                     }}
-                    placeholder="9876543210"
+                    placeholder={COUNTRIES.find(c => c.name === selectedCountryName)?.placeholder || "Enter number"}
+                    maxLength={COUNTRIES.find(c => c.name === selectedCountryName)?.length || 15}
                     disabled={!isEditing}
                     className={`flex-1 px-4 py-3 rounded-xl bg-[var(--color-bg-base)] border border-[var(--color-border-ui)] text-[var(--color-text-main)] placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all text-sm ${!isEditing && "opacity-60 cursor-not-allowed"}`}
                   />
