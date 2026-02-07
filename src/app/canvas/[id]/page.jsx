@@ -609,6 +609,7 @@ export default function CanvasPage() {
             const clickedOnEmpty = e.target === e.target.getStage();
             if (clickedOnEmpty) {
                 setSelectedId(null);
+                setSelectedIds([]);
             }
             return;
         }
@@ -942,16 +943,34 @@ export default function CanvasPage() {
         // Skip hidden elements
         if (shape.visible === false) return null;
 
-        const isSelected = shape.id === selectedId;
+        const isSelected = shape.id === selectedId || selectedIds.includes(shape.id);
         const isLocked = shape.locked === true;
 
         const commonProps = {
             id: `shape-${shape.id}`,
             opacity: shape.opacity ?? 1,
-            onClick: () => {
+            onClick: (e) => {
                 // Allow selection with select tool or text tool (for text elements)
                 if ((tool === 'select' || tool === 'text') && !isLocked) {
-                    setSelectedId(shape.id);
+                    const isShiftPressed = e.evt?.shiftKey;
+
+                    if (isShiftPressed) {
+                        // Multi-select: toggle selection
+                        setSelectedIds(prev => {
+                            if (prev.includes(shape.id)) {
+                                return prev.filter(id => id !== shape.id);
+                            } else {
+                                return [...prev, shape.id];
+                            }
+                        });
+                        // Also update selectedId for compatibility
+                        setSelectedId(shape.id);
+                    } else {
+                        // Single select: replace selection
+                        setSelectedId(shape.id);
+                        setSelectedIds([shape.id]);
+                    }
+
                     // Auto-switch to select tool after clicking an element
                     if (tool === 'text') setTool('select');
                 }
