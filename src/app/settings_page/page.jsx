@@ -32,6 +32,20 @@ import {
 import { useSearchParams } from "next/navigation"; // Import useSearchParams
 import Navbar from "@/components/Navbar";
 
+// Predefined list of 10 countries with codes and names
+const COUNTRIES = [
+  { code: "+91", name: "India", flag: "🇮🇳" },
+  { code: "+1", name: "US", flag: "🇺🇸" },
+  { code: "+44", name: "UK", flag: "🇬🇧" },
+  { code: "+1", name: "Canada", flag: "🇨🇦" },
+  { code: "+61", name: "Australia", flag: "🇦🇺" },
+  { code: "+49", name: "Germany", flag: "🇩🇪" },
+  { code: "+33", name: "France", flag: "🇫🇷" },
+  { code: "+81", name: "Japan", flag: "🇯🇵" },
+  { code: "+55", name: "Brazil", flag: "🇧🇷" },
+  { code: "+65", name: "Singapore", flag: "🇸🇬" },
+];
+
 /**
  * Settings Page Component.
  * 
@@ -71,6 +85,8 @@ export default function SettingsPage() {
   const [jobTitle, setJobTitle] = useState("");
   /** @type {[string, React.Dispatch<React.SetStateAction<string>>]} User phone number */
   const [phoneNumber, setPhoneNumber] = useState("");
+  /** @type {[string, React.Dispatch<React.SetStateAction<string>>]} Selected country code */
+  const [countryCode, setCountryCode] = useState("+91");
   /** @type {[string, React.Dispatch<React.SetStateAction<string>>]} Feedback message for save operations */
   const [saveMessage, setSaveMessage] = useState("");
 
@@ -121,6 +137,7 @@ export default function SettingsPage() {
           setBio(data.bio || "");
           setJobTitle(data.jobTitle || "");
           setPhoneNumber(data.phoneNumber || "");
+          setCountryCode(data.countryCode || "+91");
         }
       } catch (error) {
         console.error("Error fetching profile:", error);
@@ -163,6 +180,7 @@ export default function SettingsPage() {
           bio: bio.trim(),
           jobTitle: jobTitle.trim(),
           phoneNumber: phoneNumber.trim(),
+          countryCode: countryCode,
           updatedAt: serverTimestamp(),
         },
         { merge: true }
@@ -356,17 +374,31 @@ export default function SettingsPage() {
               {/* Phone Number (Editable) */}
               <div className="md:col-span-2">
                 <label className="text-xs text-slate-500 mb-1 block">Phone Number</label>
-                <input
-                  type="tel"
-                  value={phoneNumber}
-                  onChange={(e) => {
-                    const val = e.target.value.replace(/\D/g, "");
-                    setPhoneNumber(val);
-                  }}
-                  placeholder="+91 9876543210"
-                  disabled={!isEditing}
-                  className={`w-full px-4 py-3 rounded-xl bg-[var(--color-bg-base)] border border-[var(--color-border-ui)] text-[var(--color-text-main)] placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all text-sm ${!isEditing && "opacity-60 cursor-not-allowed"}`}
-                />
+                <div className="flex gap-2">
+                  <select
+                    value={countryCode}
+                    onChange={(e) => setCountryCode(e.target.value)}
+                    disabled={!isEditing}
+                    className={`w-32 px-3 py-3 rounded-xl bg-[var(--color-bg-base)] border border-[var(--color-border-ui)] text-[var(--color-text-main)] focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all text-sm ${!isEditing && "opacity-60 cursor-not-allowed"}`}
+                  >
+                    {COUNTRIES.map((c) => (
+                      <option key={`${c.name}-${c.code}`} value={c.code}>
+                        {c.flag} {c.code}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="tel"
+                    value={phoneNumber}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, "");
+                      setPhoneNumber(val);
+                    }}
+                    placeholder="9876543210"
+                    disabled={!isEditing}
+                    className={`flex-1 px-4 py-3 rounded-xl bg-[var(--color-bg-base)] border border-[var(--color-border-ui)] text-[var(--color-text-main)] placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all text-sm ${!isEditing && "opacity-60 cursor-not-allowed"}`}
+                  />
+                </div>
               </div>
             </div>
           </div>
