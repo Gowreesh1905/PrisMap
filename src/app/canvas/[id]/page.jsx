@@ -624,6 +624,12 @@ export default function CanvasPage() {
             setIsDrawing(true);
             setCurrentPoints([adjustedPoint.x, adjustedPoint.y]);
         } else if (tool === 'text') {
+            // Only create new text if clicking on empty space (stage background)
+            const clickedOnEmpty = e.target === e.target.getStage();
+            if (!clickedOnEmpty) {
+                // Clicked on an existing element - select it instead
+                return;
+            }
             const newText = {
                 id: Date.now(),
                 type: 'text',
