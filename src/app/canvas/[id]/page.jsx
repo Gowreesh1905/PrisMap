@@ -948,7 +948,14 @@ export default function CanvasPage() {
         const commonProps = {
             id: `shape-${shape.id}`,
             opacity: shape.opacity ?? 1,
-            onClick: () => tool === 'select' && !isLocked && setSelectedId(shape.id),
+            onClick: () => {
+                // Allow selection with select tool or text tool (for text elements)
+                if ((tool === 'select' || tool === 'text') && !isLocked) {
+                    setSelectedId(shape.id);
+                    // Auto-switch to select tool after clicking an element
+                    if (tool === 'text') setTool('select');
+                }
+            },
             draggable: tool === 'select' && !isLocked,
             onDragEnd: (e) => {
                 if (isLocked) return;
