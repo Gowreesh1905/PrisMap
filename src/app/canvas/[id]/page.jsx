@@ -332,6 +332,152 @@ export default function CanvasPage() {
         saveToHistory(newElements);
     }, [selectedId, elements, saveToHistory]);
 
+    // ===== ALIGNMENT FUNCTIONS =====
+    const getSelectedElements = useCallback(() => {
+        const ids = selectedIds.length > 0 ? selectedIds : (selectedId ? [selectedId] : []);
+        return elements.filter(el => ids.includes(el.id));
+    }, [selectedIds, selectedId, elements]);
+
+    const getBoundingBox = useCallback((el) => {
+        // Get bounding box for any element type
+        if (el.type === 'circle') {
+            const radius = Math.min(el.width || 50, el.height || 50) / 2;
+            return { x: el.x - radius, y: el.y - radius, width: radius * 2, height: radius * 2 };
+        } else if (el.type === 'text') {
+            return { x: el.x, y: el.y, width: 100, height: el.fontSize || 24 };
+        } else if (el.type === 'pen') {
+            const points = el.points || [];
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (let i = 0; i < points.length; i += 2) {
+                minX = Math.min(minX, points[i]);
+                maxX = Math.max(maxX, points[i]);
+                minY = Math.min(minY, points[i + 1]);
+                maxY = Math.max(maxY, points[i + 1]);
+            }
+            return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+        }
+        return { x: el.x, y: el.y, width: el.width || 50, height: el.height || 50 };
+    }, []);
+
+    const alignElements = useCallback((direction) => {
+        const selected = getSelectedElements();
+        if (selected.length < 2) return;
+
+        const boxes = selected.map(el => ({ id: el.id, ...getBoundingBox(el) }));
+        let newElements = [...elements];
+
+        switch (direction) {
+            case 'left': {
+                const minX = Math.min(...boxes.map(b => b.x));
+                newElements = newElements.map(el => {
+                    const box = boxes.find(b => b.id === el.id);
+                    if (!box) return el;
+                    const offset = box.x - minX;
+                    return { ...el, x: el.x - offset };
+                });
+                break;
+            }
+            case 'center': {
+                const minX = Math.min(...boxes.map(b => b.x));
+                const maxX = Math.max(...boxes.map(b => b.x + b.width));
+                const centerX = (minX + maxX) / 2;
+                newElements = newElements.map(el => {
+                    const box = boxes.find(b => b.id === el.id);
+                    if (!box) return el;
+                    const elCenterX = box.x + box.width / 2;
+                    return { ...el, x: el.x + (centerX - elCenterX) };
+                });
+                break;
+            }
+            case 'right': {
+                const maxX = Math.max(...boxes.map(b => b.x + b.width));
+                newElements = newElements.map(el => {
+                    const box = boxes.find(b => b.id === el.id);
+                    if (!box) return el;
+                    const offset = maxX - (box.x + box.width);
+                    return { ...el, x: el.x + offset };
+                });
+                break;
+            }
+            case 'top': {
+                const minY = Math.min(...boxes.map(b => b.y));
+                newElements = newElements.map(el => {
+                    const box = boxes.find(b => b.id === el.id);
+                    if (!box) return el;
+                    const offset = box.y - minY;
+                    return { ...el, y: el.y - offset };
+                });
+                break;
+            }
+            case 'middle': {
+                const minY = Math.min(...boxes.map(b => b.y));
+                const maxY = Math.max(...boxes.map(b => b.y + b.height));
+                const centerY = (minY + maxY) / 2;
+                newElements = newElements.map(el => {
+                    const box = boxes.find(b => b.id === el.id);
+                    if (!box) return el;
+                    const elCenterY = box.y + box.height / 2;
+                    return { ...el, y: el.y + (centerY - elCenterY) };
+                });
+                break;
+            }
+            case 'bottom': {
+                const maxY = Math.max(...boxes.map(b => b.y + b.height));
+                newElements = newElements.map(el => {
+                    const box = boxes.find(b => b.id === el.id);
+                    if (!box) return el;
+                    const offset = maxY - (box.y + box.height);
+                    return { ...el, y: el.y + offset };
+                });
+                break;
+            }
+        }
+        saveToHistory(newElements);
+    }, [getSelectedElements, getBoundingBox, elements, saveToHistory]);
+
+    const distributeElements = useCallback((axis) => {
+        const selected = getSelectedElements();
+        if (selected.length < 3) return;
+
+        const boxes = selected.map(el => ({ id: el.id, el, ...getBoundingBox(el) }));
+
+        if (axis === 'horizontal') {
+            boxes.sort((a, b) => a.x - b.x);
+            const minX = boxes[0].x;
+            const maxX = boxes[boxes.length - 1].x + boxes[boxes.length - 1].width;
+            const totalWidth = boxes.reduce((sum, b) => sum + b.width, 0);
+            const gap = (maxX - minX - totalWidth) / (boxes.length - 1);
+
+            let currentX = minX;
+            const newElements = elements.map(el => {
+                const boxIdx = boxes.findIndex(b => b.id === el.id);
+                if (boxIdx === -1) return el;
+                const box = boxes[boxIdx];
+                const newX = currentX;
+                currentX += box.width + gap;
+                return { ...el, x: el.x + (newX - box.x) };
+            });
+            saveToHistory(newElements);
+        } else {
+            boxes.sort((a, b) => a.y - b.y);
+            const minY = boxes[0].y;
+            const maxY = boxes[boxes.length - 1].y + boxes[boxes.length - 1].height;
+            const totalHeight = boxes.reduce((sum, b) => sum + b.height, 0);
+            const gap = (maxY - minY - totalHeight) / (boxes.length - 1);
+
+            let currentY = minY;
+            const newElements = elements.map(el => {
+                const boxIdx = boxes.findIndex(b => b.id === el.id);
+                if (boxIdx === -1) return el;
+                const box = boxes[boxIdx];
+                const newY = currentY;
+                currentY += box.height + gap;
+                return { ...el, y: el.y + (newY - box.y) };
+            });
+            saveToHistory(newElements);
+        }
+    }, [getSelectedElements, getBoundingBox, elements, saveToHistory]);
+
     // ===== LAYER MANAGEMENT =====
     const toggleVisibility = useCallback((id) => {
         setElements(prev => prev.map(el =>
@@ -389,9 +535,15 @@ export default function CanvasPage() {
         link.click();
         document.body.removeChild(link);
     }, [canvasTitle]);
-
-    // ===== ALIGNMENT FUNCTIONS =====
+    // ===== ALIGNMENT WRAPPER =====
     const alignSelected = useCallback((alignment) => {
+        // Use multi-element alignment if multiple selected
+        if (selectedIds.length > 1) {
+            alignElements(alignment);
+            return;
+        }
+
+        // Single element: align to viewport center
         if (!selectedId) return;
         const el = elements.find(e => e.id === selectedId);
         if (!el || el.type === 'pen') return;
@@ -414,7 +566,7 @@ export default function CanvasPage() {
 
         const newElements = elements.map(e => e.id === selectedId ? { ...e, ...updates } : e);
         saveToHistory(newElements);
-    }, [selectedId, elements, stagePos, stageScale, saveToHistory]);
+    }, [selectedId, selectedIds, elements, stagePos, stageScale, saveToHistory, alignElements]);
 
     // ===== SNAP TO GRID HELPER =====
     const snapPosition = useCallback((pos) => {
