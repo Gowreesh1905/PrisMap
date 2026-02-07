@@ -1280,6 +1280,7 @@ export default function CanvasPage() {
                         fontSize={shape.fontSize || 24}
                         fontFamily={shape.fontFamily || 'Arial'}
                         fontStyle={shape.fontStyle || 'normal'}
+                        align={shape.textAlign || 'left'}
                         fill={shape.fill}
                         onDblClick={(e) => {
                             e.cancelBubble = true;
@@ -1865,6 +1866,31 @@ export default function CanvasPage() {
                                                         </button>
                                                     </div>
                                                 </div>
+
+                                                {/* Text Alignment */}
+                                            <div className="mb-4">
+                                                <label className="text-xs font-semibold text-gray-600 mb-2 block">Text Align</label>
+                                                <div className="grid grid-cols-3 gap-1">
+                                                    <button
+                                                        onClick={() => updateSelectedFont({ textAlign: 'left' })}
+                                                        className={`py-2 px-3 text-xs rounded-lg border transition-colors ${(selectedElement.textAlign || 'left') === 'left' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'}`}
+                                                    >
+                                                        <AlignLeft size={14} className="mx-auto" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => updateSelectedFont({ textAlign: 'center' })}
+                                                        className={`py-2 px-3 text-xs rounded-lg border transition-colors ${selectedElement.textAlign === 'center' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'}`}
+                                                    >
+                                                        <AlignCenter size={14} className="mx-auto" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => updateSelectedFont({ textAlign: 'right' })}
+                                                        className={`py-2 px-3 text-xs rounded-lg border transition-colors ${selectedElement.textAlign === 'right' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'}`}
+                                                    >
+                                                        <AlignRight size={14} className="mx-auto" />
+                                                    </button>
+                                                </div>
+                                            </div>
                                             )}
 
                                             {/* Z-Index Controls */}
