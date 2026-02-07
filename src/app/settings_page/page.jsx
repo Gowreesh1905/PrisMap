@@ -322,6 +322,7 @@ export default function SettingsPage() {
                 <img
                   src={displayAvatar}
                   alt="Profile Avatar"
+                  referrerPolicy="no-referrer"
                   className="h-24 w-24 rounded-2xl object-cover border-2 border-purple-500/30 shadow-lg shadow-purple-500/20"
                 />
               </div>

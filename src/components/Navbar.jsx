@@ -143,6 +143,7 @@ export default function Navbar({ user, projects = [] }) {
             <img
               src={user?.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${user?.email}`}
               alt="User Profile"
+              referrerPolicy="no-referrer"
               className="h-full w-full object-cover"
             />
           </button>
