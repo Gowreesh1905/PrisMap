@@ -30,7 +30,8 @@ export default function Navbar({ user, projects = [] }) {
 
   // Initialize theme state from DOM on mount
   useEffect(() => {
-    setIsDark(document.documentElement.classList.contains("dark"));
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (document.documentElement.classList.contains("dark")) setIsDark(true);
   }, []);
 
   /**
@@ -167,7 +168,7 @@ export default function Navbar({ user, projects = [] }) {
             <div className="max-h-80 overflow-y-auto p-2">
               {searchQuery && filteredProjects.length === 0 ? (
                 <div className="px-4 py-8 text-center text-slate-500">
-                  No projects found for "{searchQuery}"
+                  No projects found for &quot;{searchQuery}&quot;
                 </div>
               ) : searchQuery ? (
                 filteredProjects.map((project) => (
