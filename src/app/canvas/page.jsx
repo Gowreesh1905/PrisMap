@@ -9,8 +9,11 @@ import { Stage, Layer, Line, Rect, Circle, Star, RegularPolygon, Text, Arrow } f
 import {
     MousePointer2, Pencil, Type, Square, Circle as CircleIcon, Triangle,
     Star as StarIcon, ArrowRight, Minus, Hexagon, Pentagon, Trash2,
-    ZoomIn, ZoomOut, Maximize2, Eraser, Undo, Redo
+    ZoomIn, ZoomOut, Maximize2, Eraser, Undo, Redo, Settings, LogOut
 } from 'lucide-react';
+import { auth } from "@/lib/firebase";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { useRouter } from "next/navigation";
 
 const CANVAS_WIDTH = typeof window !== 'undefined' ? window.innerWidth - 480 : 1200;
 const CANVAS_HEIGHT = typeof window !== 'undefined' ? window.innerHeight - 56 : 800;
@@ -27,6 +30,29 @@ export default function CanvasPage() {
     const [isDrawing, setIsDrawing] = useState(false);
     const [currentPoints, setCurrentPoints] = useState([]);
     const [selectedId, setSelectedId] = useState(null);
+    const [user, setUser] = useState(null);
+    const router = useRouter();
+
+    // Handle Authentication
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, (curr) => {
+            if (!curr) {
+                router.push("/");
+            } else {
+                setUser(curr);
+            }
+        });
+        return () => unsubscribe();
+    }, [router]);
+
+    const handleLogout = async () => {
+        try {
+            await signOut(auth);
+            router.push("/");
+        } catch (error) {
+            console.error("Logout Error:", error);
+        }
+    };
 
     // Drawing settings
     const [strokeColor, setStrokeColor] = useState('#000000');
@@ -717,6 +743,29 @@ export default function CanvasPage() {
                             <Maximize2 size={16} className="text-gray-700" />
                         </button>
                     </div>
+                </div>
+
+                {/* User Profile & Settings */}
+                <div className="flex items-center gap-3 ml-4 pl-4 border-l border-gray-200">
+                    <button
+                        onClick={() => router.push("/settings_page")}
+                        className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                        title="Settings"
+                    >
+                        <Settings size={20} />
+                    </button>
+                    <button
+                        onClick={handleLogout}
+                        className="h-9 w-9 overflow-hidden rounded-full border-2 border-white/50 shadow-sm active:scale-90 transition-transform overflow-hidden"
+                        title="Log Out"
+                    >
+                        <img
+                            src={user?.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${user?.email}`}
+                            alt="User Profile"
+                            referrerPolicy="no-referrer"
+                            className="h-full w-full object-cover"
+                        />
+                    </button>
                 </div>
             </header>
 
