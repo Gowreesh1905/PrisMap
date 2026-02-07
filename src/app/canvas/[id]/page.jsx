@@ -497,6 +497,13 @@ export default function CanvasPage() {
         ));
     }, []);
 
+    const updateElementShadow = useCallback((updates) => {
+        if (!selectedId) return;
+        setElements(prev => prev.map(el =>
+            el.id === selectedId ? { ...el, ...updates } : el
+        ));
+    }, [selectedId]);
+
     const moveLayerUp = useCallback((id) => {
         const idx = elements.findIndex(e => e.id === id);
         if (idx === elements.length - 1) return;
@@ -1145,6 +1152,12 @@ export default function CanvasPage() {
             stroke: isSelected ? '#8b3dff' : (shape.stroke || strokeColor),
             strokeWidth: isSelected ? strokeWidth + 2 : (shape.strokeWidth || strokeWidth),
             dash: isSelected ? [5, 5] : undefined,
+            // Shadow properties
+            shadowColor: shape.shadowColor || 'transparent',
+            shadowBlur: shape.shadowBlur || 0,
+            shadowOffsetX: shape.shadowOffsetX || 0,
+            shadowOffsetY: shape.shadowOffsetY || 0,
+            shadowOpacity: shape.shadowOpacity || 0.5,
         };
 
         switch (shape.type) {
@@ -1791,6 +1804,64 @@ export default function CanvasPage() {
                                                         className="flex-1"
                                                     />
                                                     <span className="text-xs w-10">{Math.round((selectedElement.opacity ?? 1) * 100)}%</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Shadow Controls */}
+                                            <div className="mb-4 p-3 bg-gray-50 rounded-xl border border-gray-200">
+                                                <label className="text-xs font-bold text-gray-700 mb-2 block uppercase tracking-wider">Shadow</label>
+
+                                                <div className="space-y-3">
+                                                    {/* Shadow Color */}
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs text-gray-600 w-12">Color</span>
+                                                        <input
+                                                            type="color"
+                                                            value={selectedElement.shadowColor || '#000000'}
+                                                            onChange={(e) => updateElementShadow({ shadowColor: e.target.value })}
+                                                            className="w-8 h-8 rounded border cursor-pointer"
+                                                        />
+                                                        <button
+                                                            onClick={() => updateElementShadow({ shadowColor: 'transparent', shadowBlur: 0 })}
+                                                            className="text-xs text-gray-500 hover:text-gray-700"
+                                                        >
+                                                            Clear
+                                                        </button>
+                                                    </div>
+
+                                                    {/* Shadow Blur */}
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs text-gray-600 w-12">Blur</span>
+                                                        <input
+                                                            type="range" min="0" max="30" step="1"
+                                                            value={selectedElement.shadowBlur || 0}
+                                                            onChange={(e) => updateElementShadow({ shadowBlur: parseInt(e.target.value) })}
+                                                            className="flex-1"
+                                                        />
+                                                        <span className="text-xs w-8">{selectedElement.shadowBlur || 0}</span>
+                                                    </div>
+
+                                                    {/* Shadow Offset X/Y */}
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <div className="flex items-center gap-1">
+                                                            <span className="text-xs text-gray-600">X</span>
+                                                            <input
+                                                                type="number"
+                                                                value={selectedElement.shadowOffsetX || 0}
+                                                                onChange={(e) => updateElementShadow({ shadowOffsetX: parseInt(e.target.value) })}
+                                                                className="w-full px-2 py-1 text-xs border rounded"
+                                                            />
+                                                        </div>
+                                                        <div className="flex items-center gap-1">
+                                                            <span className="text-xs text-gray-600">Y</span>
+                                                            <input
+                                                                type="number"
+                                                                value={selectedElement.shadowOffsetY || 0}
+                                                                onChange={(e) => updateElementShadow({ shadowOffsetY: parseInt(e.target.value) })}
+                                                                className="w-full px-2 py-1 text-xs border rounded"
+                                                            />
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
 
