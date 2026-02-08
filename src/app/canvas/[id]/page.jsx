@@ -1182,11 +1182,6 @@ export default function CanvasPage() {
             onDragEnd: (e) => {
                 if (isLocked) return;
                 let newPos = { x: e.target.x(), y: e.target.y() };
-                if (snapToGrid) {
-                    newPos = snapPosition(newPos);
-                    e.target.x(newPos.x);
-                    e.target.y(newPos.y);
-                }
                 // For center-rendered shapes, convert center position back to top-left
                 const isCenterRendered = ['circle', 'triangle', 'star', 'hexagon', 'pentagon'].includes(shape.type);
                 if (isCenterRendered && shape.width && shape.height) {
