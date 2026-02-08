@@ -502,6 +502,7 @@ export default function CanvasPage() {
                             fill={shape.fill}
                             pointerLength={20}
                             pointerWidth={20}
+                            hitStrokeWidth={20}
                         />
                     );
                 }
@@ -514,6 +515,7 @@ export default function CanvasPage() {
                             key={shape.id}
                             {...commonProps}
                             points={[shape.x, shape.y, shape.x + shape.width, shape.y + shape.height]}
+                            hitStrokeWidth={20}
                         />
                     );
                 }
