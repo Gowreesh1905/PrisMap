@@ -176,7 +176,7 @@ export default function Dashboard() {
               {/* Content */}
               <div className="p-8 text-center">
                 <p className="text-slate-400 mb-6">
-                  Welcome to Prisync! take a moment to set up your professional profile to help others recognize you.
+                  Welcome to PrisMap! Take a moment to set up your professional profile to help others recognize you.
                 </p>
 
                 <ul className="text-left space-y-3 mb-8 bg-[var(--color-bg-base)]/50 p-4 rounded-xl border border-[var(--color-border-ui)]">

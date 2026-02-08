@@ -98,7 +98,7 @@ export default function Navbar({ user, projects = [] }) {
           onClick={() => router.push("/dashboard")}
           className="flex-shrink-0 text-xl font-bold tracking-tight dark:text-glossy-intellij hover:opacity-80 transition-opacity"
         >
-          Prisync
+          PrisMap
         </button>
 
         <div className="flex-grow" />

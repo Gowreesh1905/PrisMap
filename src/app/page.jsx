@@ -24,25 +24,25 @@ export default function LoginPage() {
   return (
     // Added 'bg-slate-50' for a slightly cleaner background base
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-50">
-      
+
       {/* --- Updated Background Blobs (Bolder & Sharper) --- */}
       {/* Blob 1: Indigo (Center, pulsing) - Lower blur, higher opacity */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] bg-indigo-500/40 rounded-full blur-[80px] mix-blend-multiply animate-pulse" />
-      
+
       {/* Blob 2: Teal (Top Right) - Lower blur, higher opacity */}
       <div className="absolute top-1/2 left-1/2 -translate-x-[30%] -translate-y-[60%] w-[600px] h-[600px] bg-teal-400/40 rounded-full blur-[60px] mix-blend-multiply" />
-      
+
       {/* Blob 3: Purple (Bottom Left) - Lower blur, higher opacity */}
       <div className="absolute top-1/2 left-1/2 -translate-x-[70%] -translate-y-[30%] w-[600px] h-[600px] bg-purple-400/40 rounded-full blur-[60px] mix-blend-multiply" />
 
 
       {/* --- The Glass Card (Unchanged) --- */}
       <div className="relative z-10 w-full max-w-md p-10 bg-white/70 backdrop-blur-3xl border border-white/50 shadow-2xl shadow-indigo-500/10 rounded-3xl text-center">
-        
+
         {/* Logo Section */}
         <div className="mb-8">
           <h1 className="text-4xl font-extrabold text-slate-800 tracking-tight">
-            Prisync
+            PrisMap
           </h1>
           <p className="mt-2 text-slate-500 font-medium text-sm">
             Your infinite collaborative space
@@ -87,7 +87,7 @@ export default function LoginPage() {
         </button>
 
       </div>
-      
+
       {/* Footer Text */}
       <div className="absolute bottom-6 text-slate-400 text-xs font-medium tracking-wide">
         DESIGNED FOR SPRINT 1
