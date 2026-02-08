@@ -5,7 +5,7 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { Stage, Layer, Line, Rect, Circle, Star, RegularPolygon, Text, Arrow } from 'react-konva';
+import { Stage, Layer, Line, Rect, Circle, Star, RegularPolygon, Text, Arrow, Group } from 'react-konva';
 import {
     MousePointer2, Pencil, Type, Square, Circle as CircleIcon, Triangle,
     Star as StarIcon, ArrowRight, Minus, Hexagon, Pentagon, Trash2,
@@ -231,18 +231,32 @@ export default function CanvasPage() {
             saveToHistory(elements);
         } else if (tool !== 'select' && tool !== 'text') {
             const [x1, y1, x2, y2] = currentPoints;
-            const newShape = {
-                id: Date.now(),
-                type: tool,
-                x: Math.min(x1, x2),
-                y: Math.min(y1, y2),
-                width: Math.abs(x2 - x1),
-                height: Math.abs(y2 - y1),
-                fill: fillColor,
-                stroke: strokeColor,
-                strokeWidth: strokeWidth,
-            };
-            saveToHistory([...elements, newShape]);
+
+            // Lines and arrows store actual points for better hit detection
+            if (tool === 'line' || tool === 'arrow') {
+                const newShape = {
+                    id: Date.now(),
+                    type: tool,
+                    points: [x1, y1, x2, y2],
+                    fill: fillColor,
+                    stroke: strokeColor,
+                    strokeWidth: strokeWidth,
+                };
+                saveToHistory([...elements, newShape]);
+            } else {
+                const newShape = {
+                    id: Date.now(),
+                    type: tool,
+                    x: Math.min(x1, x2),
+                    y: Math.min(y1, y2),
+                    width: Math.abs(x2 - x1),
+                    height: Math.abs(y2 - y1),
+                    fill: fillColor,
+                    stroke: strokeColor,
+                    strokeWidth: strokeWidth,
+                };
+                saveToHistory([...elements, newShape]);
+            }
         }
 
         setCurrentPoints([]);
@@ -380,21 +394,48 @@ export default function CanvasPage() {
     /**
      * Render shape based on type
      */
-    const renderShape = (shape) => {
+    const renderShape = (shape, index, allElements) => {
         const isSelected = shape.id === selectedId;
+
+        // Check if any line/arrow above this shape is selected (to disable click-through)
+        const lineOrArrowSelectedAbove = allElements.slice(index + 1).some(
+            el => (el.type === 'line' || el.type === 'arrow') && el.id === selectedId
+        );
+
         const commonProps = {
             id: `shape-${shape.id}`,
             onClick: () => tool === 'select' && setSelectedId(shape.id),
-            draggable: tool === 'select',
+            draggable: tool === 'select' && !lineOrArrowSelectedAbove,
+            listening: !lineOrArrowSelectedAbove || shape.id === selectedId,
             onDragEnd: (e) => {
-                setElements(prevElements => prevElements.map(el =>
-                    el.id === shape.id
-                        ? { ...el, x: e.target.x(), y: e.target.y() }
-                        : el
-                ));
+                if (shape.type === 'line' || shape.type === 'arrow') {
+                    // For lines/arrows, update points based on drag delta
+                    const dx = e.target.x();
+                    const dy = e.target.y();
+                    setElements(prevElements => prevElements.map(el =>
+                        el.id === shape.id
+                            ? {
+                                ...el,
+                                points: [
+                                    el.points[0] + dx,
+                                    el.points[1] + dy,
+                                    el.points[2] + dx,
+                                    el.points[3] + dy
+                                ]
+                            }
+                            : el
+                    ));
+                    e.target.position({ x: 0, y: 0 }); // Reset position since we updated points
+                } else {
+                    setElements(prevElements => prevElements.map(el =>
+                        el.id === shape.id
+                            ? { ...el, x: e.target.x(), y: e.target.y() }
+                            : el
+                    ));
+                }
             },
             stroke: isSelected ? '#8b3dff' : (shape.stroke || strokeColor),
-            strokeWidth: isSelected ? strokeWidth + 2 : (shape.strokeWidth || strokeWidth),
+            strokeWidth: isSelected ? (shape.strokeWidth || strokeWidth) + 2 : (shape.strokeWidth || strokeWidth),
             dash: isSelected ? [5, 5] : undefined,
         };
 
@@ -492,34 +533,65 @@ export default function CanvasPage() {
                     />
                 );
 
-            case 'arrow':
-                if (shape.width && shape.height) {
-                    return (
+            case 'arrow': {
+                const pts = shape.points || [shape.x, shape.y, shape.x + (shape.width || 0), shape.y + (shape.height || 0)];
+                return (
+                    <Group
+                        key={shape.id}
+                        draggable={commonProps.draggable}
+                        onClick={commonProps.onClick}
+                        onDragEnd={commonProps.onDragEnd}
+                    >
+                        {/* Invisible thick line for hit detection */}
+                        <Line
+                            points={pts}
+                            stroke="transparent"
+                            strokeWidth={40}
+                            lineCap="round"
+                        />
+                        {/* Visible arrow */}
                         <Arrow
-                            key={shape.id}
-                            {...commonProps}
-                            points={[shape.x, shape.y, shape.x + shape.width, shape.y + shape.height]}
-                            fill={shape.fill}
+                            points={pts}
+                            stroke={commonProps.stroke}
+                            strokeWidth={commonProps.strokeWidth}
+                            dash={commonProps.dash}
+                            fill={shape.fill || commonProps.stroke}
                             pointerLength={20}
                             pointerWidth={20}
-                            hitStrokeWidth={20}
+                            listening={false}
                         />
-                    );
-                }
-                return null;
+                    </Group>
+                );
+            }
 
-            case 'line':
-                if (shape.width && shape.height) {
-                    return (
+            case 'line': {
+                const pts = shape.points || [shape.x, shape.y, shape.x + (shape.width || 0), shape.y + (shape.height || 0)];
+                return (
+                    <Group
+                        key={shape.id}
+                        draggable={commonProps.draggable}
+                        onClick={commonProps.onClick}
+                        onDragEnd={commonProps.onDragEnd}
+                    >
+                        {/* Invisible thick line for hit detection */}
                         <Line
-                            key={shape.id}
-                            {...commonProps}
-                            points={[shape.x, shape.y, shape.x + shape.width, shape.y + shape.height]}
-                            hitStrokeWidth={20}
+                            points={pts}
+                            stroke="transparent"
+                            strokeWidth={40}
+                            lineCap="round"
                         />
-                    );
-                }
-                return null;
+                        {/* Visible line */}
+                        <Line
+                            points={pts}
+                            stroke={commonProps.stroke}
+                            strokeWidth={commonProps.strokeWidth}
+                            dash={commonProps.dash}
+                            lineCap="round"
+                            listening={false}
+                        />
+                    </Group>
+                );
+            }
 
             case 'text':
                 return (
@@ -760,7 +832,7 @@ export default function CanvasPage() {
                             })()}
 
                             {/* Render all elements */}
-                            {elements.map(renderShape)}
+                            {elements.map((shape, index, arr) => renderShape(shape, index, arr))}
 
                             {/* Current drawing preview */}
                             {isDrawing && currentPoints.length >= 2 && (
