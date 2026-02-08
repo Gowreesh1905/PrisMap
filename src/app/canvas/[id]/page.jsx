@@ -1155,8 +1155,8 @@ export default function CanvasPage() {
                         : el
                 ));
             },
-            stroke: isSelected ? '#8b3dff' : (shape.stroke || strokeColor),
-            strokeWidth: isSelected ? strokeWidth + 2 : (shape.strokeWidth || strokeWidth),
+            stroke: isSelected ? '#8b3dff' : (shape.stroke || (shape.type === 'text' ? undefined : strokeColor)),
+            strokeWidth: isSelected ? (shape.strokeWidth || strokeWidth) + 2 : (shape.type === 'text' && !shape.stroke ? undefined : (shape.strokeWidth || strokeWidth)),
             dash: isSelected ? [5, 5] : undefined,
             // Shadow properties
             shadowColor: shape.shadowColor || 'transparent',
@@ -1847,24 +1847,87 @@ export default function CanvasPage() {
                                 <div>
                                     <label className="text-xs font-semibold text-gray-700 mb-2 block uppercase tracking-wider">Stroke Color</label>
                                     <div className="flex items-center gap-2">
-                                        <input type="color" value={strokeColor} onChange={(e) => setStrokeColor(e.target.value)} className="w-10 h-10 rounded-lg cursor-pointer border-2 border-gray-200" />
-                                        <input type="text" value={strokeColor} onChange={(e) => setStrokeColor(e.target.value)} className="flex-1 px-2 py-1.5 border border-gray-200 rounded-lg text-xs font-mono uppercase" />
+                                        <input
+                                            type="color"
+                                            value={selectedElement?.stroke || strokeColor}
+                                            onChange={(e) => {
+                                                setStrokeColor(e.target.value);
+                                                if (selectedId) {
+                                                    setElements(prev => prev.map(el =>
+                                                        el.id === selectedId ? { ...el, stroke: e.target.value } : el
+                                                    ));
+                                                }
+                                            }}
+                                            className="w-10 h-10 rounded-lg cursor-pointer border-2 border-gray-200"
+                                        />
+                                        <input
+                                            type="text"
+                                            value={selectedElement?.stroke || strokeColor}
+                                            onChange={(e) => {
+                                                setStrokeColor(e.target.value);
+                                                if (selectedId) {
+                                                    setElements(prev => prev.map(el =>
+                                                        el.id === selectedId ? { ...el, stroke: e.target.value } : el
+                                                    ));
+                                                }
+                                            }}
+                                            className="flex-1 px-2 py-1.5 border border-gray-200 rounded-lg text-xs font-mono uppercase"
+                                        />
                                     </div>
                                 </div>
 
                                 <div>
                                     <label className="text-xs font-semibold text-gray-700 mb-2 block uppercase tracking-wider">Fill Color</label>
                                     <div className="flex items-center gap-2">
-                                        <input type="color" value={fillColor} onChange={(e) => setFillColor(e.target.value)} className="w-10 h-10 rounded-lg cursor-pointer border-2 border-gray-200" />
-                                        <input type="text" value={fillColor} onChange={(e) => setFillColor(e.target.value)} className="flex-1 px-2 py-1.5 border border-gray-200 rounded-lg text-xs font-mono uppercase" />
+                                        <input
+                                            type="color"
+                                            value={selectedElement?.fill || fillColor}
+                                            onChange={(e) => {
+                                                setFillColor(e.target.value);
+                                                if (selectedId) {
+                                                    setElements(prev => prev.map(el =>
+                                                        el.id === selectedId ? { ...el, fill: e.target.value } : el
+                                                    ));
+                                                }
+                                            }}
+                                            className="w-10 h-10 rounded-lg cursor-pointer border-2 border-gray-200"
+                                        />
+                                        <input
+                                            type="text"
+                                            value={selectedElement?.fill || fillColor}
+                                            onChange={(e) => {
+                                                setFillColor(e.target.value);
+                                                if (selectedId) {
+                                                    setElements(prev => prev.map(el =>
+                                                        el.id === selectedId ? { ...el, fill: e.target.value } : el
+                                                    ));
+                                                }
+                                            }}
+                                            className="flex-1 px-2 py-1.5 border border-gray-200 rounded-lg text-xs font-mono uppercase"
+                                        />
                                     </div>
                                 </div>
 
                                 <div>
                                     <label className="text-xs font-semibold text-gray-700 mb-2 block uppercase tracking-wider">Stroke Width</label>
                                     <div className="flex items-center gap-2">
-                                        <input type="range" min="1" max="20" value={strokeWidth} onChange={(e) => setStrokeWidth(parseInt(e.target.value))} className="flex-1" />
-                                        <span className="text-xs font-mono w-8 text-center">{strokeWidth}px</span>
+                                        <input
+                                            type="range"
+                                            min="1"
+                                            max="20"
+                                            value={selectedElement?.strokeWidth || strokeWidth}
+                                            onChange={(e) => {
+                                                const newWidth = parseInt(e.target.value);
+                                                setStrokeWidth(newWidth);
+                                                if (selectedId) {
+                                                    setElements(prev => prev.map(el =>
+                                                        el.id === selectedId ? { ...el, strokeWidth: newWidth } : el
+                                                    ));
+                                                }
+                                            }}
+                                            className="flex-1"
+                                        />
+                                        <span className="text-xs font-mono w-8 text-center">{selectedElement?.strokeWidth || strokeWidth}px</span>
                                     </div>
                                 </div>
 
