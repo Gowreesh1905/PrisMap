@@ -1674,6 +1674,78 @@ export default function CanvasPage() {
                                             stroke={strokeColor}
                                             strokeWidth={strokeWidth}
                                         />
+                                    ) : tool === 'triangle' ? (
+                                        <RegularPolygon
+                                            x={(currentPoints[0] + currentPoints[2]) / 2}
+                                            y={(currentPoints[1] + currentPoints[3]) / 2}
+                                            sides={3}
+                                            radius={Math.min(
+                                                Math.abs(currentPoints[2] - currentPoints[0]),
+                                                Math.abs(currentPoints[3] - currentPoints[1])
+                                            ) / 2}
+                                            fill={fillColor}
+                                            stroke={strokeColor}
+                                            strokeWidth={strokeWidth}
+                                        />
+                                    ) : tool === 'star' ? (
+                                        <Star
+                                            x={(currentPoints[0] + currentPoints[2]) / 2}
+                                            y={(currentPoints[1] + currentPoints[3]) / 2}
+                                            numPoints={5}
+                                            innerRadius={Math.min(
+                                                Math.abs(currentPoints[2] - currentPoints[0]),
+                                                Math.abs(currentPoints[3] - currentPoints[1])
+                                            ) / 4}
+                                            outerRadius={Math.min(
+                                                Math.abs(currentPoints[2] - currentPoints[0]),
+                                                Math.abs(currentPoints[3] - currentPoints[1])
+                                            ) / 2}
+                                            fill={fillColor}
+                                            stroke={strokeColor}
+                                            strokeWidth={strokeWidth}
+                                        />
+                                    ) : tool === 'hexagon' ? (
+                                        <RegularPolygon
+                                            x={(currentPoints[0] + currentPoints[2]) / 2}
+                                            y={(currentPoints[1] + currentPoints[3]) / 2}
+                                            sides={6}
+                                            radius={Math.min(
+                                                Math.abs(currentPoints[2] - currentPoints[0]),
+                                                Math.abs(currentPoints[3] - currentPoints[1])
+                                            ) / 2}
+                                            fill={fillColor}
+                                            stroke={strokeColor}
+                                            strokeWidth={strokeWidth}
+                                        />
+                                    ) : tool === 'pentagon' ? (
+                                        <RegularPolygon
+                                            x={(currentPoints[0] + currentPoints[2]) / 2}
+                                            y={(currentPoints[1] + currentPoints[3]) / 2}
+                                            sides={5}
+                                            radius={Math.min(
+                                                Math.abs(currentPoints[2] - currentPoints[0]),
+                                                Math.abs(currentPoints[3] - currentPoints[1])
+                                            ) / 2}
+                                            fill={fillColor}
+                                            stroke={strokeColor}
+                                            strokeWidth={strokeWidth}
+                                        />
+                                    ) : tool === 'arrow' ? (
+                                        <Arrow
+                                            points={[currentPoints[0], currentPoints[1], currentPoints[2], currentPoints[3]]}
+                                            stroke={strokeColor}
+                                            strokeWidth={strokeWidth}
+                                            fill={strokeColor}
+                                            pointerLength={20}
+                                            pointerWidth={20}
+                                        />
+                                    ) : tool === 'line' ? (
+                                        <Line
+                                            points={[currentPoints[0], currentPoints[1], currentPoints[2], currentPoints[3]]}
+                                            stroke={strokeColor}
+                                            strokeWidth={strokeWidth}
+                                            lineCap="round"
+                                        />
                                     ) : null
                                 )
                             )}
