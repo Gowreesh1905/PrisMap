@@ -1143,6 +1143,12 @@ export default function CanvasPage() {
                     e.target.x(newPos.x);
                     e.target.y(newPos.y);
                 }
+                // For center-rendered shapes, convert center position back to top-left
+                const isCenterRendered = ['circle', 'triangle', 'star', 'hexagon', 'pentagon'].includes(shape.type);
+                if (isCenterRendered && shape.width && shape.height) {
+                    newPos.x = newPos.x - shape.width / 2;
+                    newPos.y = newPos.y - shape.height / 2;
+                }
                 setElements(prevElements => prevElements.map(el =>
                     el.id === shape.id
                         ? { ...el, x: newPos.x, y: newPos.y }
