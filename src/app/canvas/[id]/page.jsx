@@ -693,66 +693,115 @@ export default function CanvasPage() {
     };
 
     /**
-     * Keyboard shortcuts
+     * Keyboard shortcuts - using capture phase to override browser defaults
      */
     useEffect(() => {
         const handleKeyDown = (e) => {
+            // Skip if editing title
             if (isEditingTitle) return;
 
-            // Undo/Redo
-            if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'z') {
-                e.preventDefault();
-                undo();
-            } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) {
-                e.preventDefault();
-                redo();
+            // Don't trigger shortcuts when typing in inputs
+            const target = e.target;
+            const tagName = target.tagName.toUpperCase();
+            if (tagName === 'INPUT' || tagName === 'TEXTAREA' || target.isContentEditable) {
+                return;
             }
-            // Save
-            else if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-                e.preventDefault();
+
+            let handled = false;
+
+            // Undo: Ctrl+Z
+            if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
+                undo();
+                handled = true;
+            }
+            // Redo: Ctrl+Y or Ctrl+Shift+Z
+            else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
+                redo();
+                handled = true;
+            }
+            // Save: Ctrl+S
+            else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
                 saveCanvas(elements, canvasTitle);
+                handled = true;
             }
             // Copy
-            else if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
-                e.preventDefault();
+            else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
                 copySelected();
+                handled = true;
             }
             // Paste
-            else if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
-                e.preventDefault();
+            else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
                 pasteClipboard();
+                handled = true;
             }
             // Duplicate
-            else if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
-                e.preventDefault();
+            else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
                 duplicateSelected();
+                handled = true;
             }
-            // Delete
+            // Delete: Delete or Backspace
             else if (e.key === 'Delete' || e.key === 'Backspace') {
                 if (selectedId) {
-                    e.preventDefault();
                     const newElements = elements.filter(el => el.id !== selectedId);
                     saveToHistory(newElements);
                     setSelectedId(null);
+                    handled = true;
                 }
+            }
+            // Escape: Deselect or cancel current action
+            else if (e.key === 'Escape') {
+                setSelectedId(null);
+                setIsDrawing(false);
+                setCurrentPoints([]);
+                handled = true;
             }
             // Z-index: [ and ] keys
             else if (e.key === ']' && !e.ctrlKey && !e.metaKey) {
-                e.preventDefault();
                 e.shiftKey ? bringToFront() : bringForward();
+                handled = true;
             }
             else if (e.key === '[' && !e.ctrlKey && !e.metaKey) {
-                e.preventDefault();
                 e.shiftKey ? sendToBack() : sendBackward();
+                handled = true;
             }
-            // Toggle snap to grid with 'g'
+            // Toggle background pattern with 'g'
             else if (e.key === 'g' && !e.ctrlKey && !e.metaKey) {
-                setSnapToGrid(prev => !prev);
+                setBackgroundPattern(prev => prev === 'grid' ? 'dots' : 'grid');
+                handled = true;
+            }
+            // Number keys for tool selection (1-9) - no modifiers
+            else if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+                const toolMap = {
+                    '1': 'select',
+                    '2': 'pen',
+                    '3': 'eraser',
+                    '4': 'text',
+                    '5': 'rectangle',
+                    '6': 'circle',
+                    '7': 'triangle',
+                    '8': 'star',
+                    '9': 'arrow',
+                };
+                if (toolMap[e.key]) {
+                    setTool(toolMap[e.key]);
+                    handled = true;
+                }
+            }
+
+            // If we handled the shortcut, prevent default and stop propagation
+            if (handled) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
             }
         };
 
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
+        // Use capture phase (true) to intercept events before other handlers
+        document.addEventListener('keydown', handleKeyDown, true);
+
+        return () => {
+            document.removeEventListener('keydown', handleKeyDown, true);
+        };
     }, [undo, redo, isEditingTitle, saveCanvas, elements, canvasTitle, copySelected, pasteClipboard, duplicateSelected, selectedId, saveToHistory, bringToFront, sendToBack, bringForward, sendBackward]);
 
     /**

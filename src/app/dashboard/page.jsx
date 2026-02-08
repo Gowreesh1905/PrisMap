@@ -3,9 +3,9 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
-import { collection, query, where, onSnapshot, orderBy } from "firebase/firestore";
+import { collection, query, where, onSnapshot, orderBy, doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
-import { Plus, Layout, Loader2 } from "lucide-react";
+import { Plus, Layout, Loader2, UserCheck, ArrowRight } from "lucide-react";
 import Navbar from "@/components/Navbar";
 
 /**
@@ -20,6 +20,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [projects, setProjects] = useState([]);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -56,9 +57,41 @@ export default function Dashboard() {
     const unsubscribeProjects = onSnapshot(q, (snap) => {
       setProjects(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setLoading(false);
+    }, (error) => {
+      // Ignore permission errors that happen during logout/auth persistence changes
+      if (error.code !== "permission-denied") {
+        console.error("Error fetching projects:", error);
+      }
     });
 
     return () => unsubscribeProjects();
+  }, [user]);
+
+  // Check Profile Completion Status
+  useEffect(() => {
+    if (!user) return;
+
+    const checkProfile = async () => {
+      try {
+        const userDocRef = doc(db, "users", user.uid);
+        const userDoc = await getDoc(userDocRef);
+
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          // Check if essential fields are missing
+          if (!data.bio || !data.jobTitle || !data.phoneNumber) {
+            setShowProfileModal(true);
+          }
+        } else {
+          // User doc doesn't exist yet, definitely new
+          setShowProfileModal(true);
+        }
+      } catch (error) {
+        console.error("Error checking profile:", error);
+      }
+    };
+
+    checkProfile();
   }, [user]);
 
   /**
@@ -126,7 +159,61 @@ export default function Dashboard() {
           </div>
         )}
       </main>
-    </div>
+
+      {/* Complete Profile Modal */}
+      {
+        showProfileModal && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="w-full max-w-md rounded-3xl border border-purple-500/30 bg-[var(--color-card)] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-300">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-indigo-500/20 to-purple-500/20 p-6 flex flex-col items-center">
+                <div className="h-16 w-16 mb-4 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center shadow-lg shadow-purple-500/30">
+                  <UserCheck size={32} className="text-white" />
+                </div>
+                <h2 className="text-2xl font-bold text-[var(--color-text-main)]">Complete Your Profile</h2>
+              </div>
+
+              {/* Content */}
+              <div className="p-8 text-center">
+                <p className="text-slate-400 mb-6">
+                  Welcome to Prisync! take a moment to set up your professional profile to help others recognize you.
+                </p>
+
+                <ul className="text-left space-y-3 mb-8 bg-[var(--color-bg-base)]/50 p-4 rounded-xl border border-[var(--color-border-ui)]">
+                  <li className="flex items-center gap-3 text-sm text-[var(--color-text-main)]">
+                    <div className="h-2 w-2 rounded-full bg-purple-400" />
+                    Add a professional bio
+                  </li>
+                  <li className="flex items-center gap-3 text-sm text-[var(--color-text-main)]">
+                    <div className="h-2 w-2 rounded-full bg-indigo-400" />
+                    Set your job title
+                  </li>
+                  <li className="flex items-center gap-3 text-sm text-[var(--color-text-main)]">
+                    <div className="h-2 w-2 rounded-full bg-blue-400" />
+                    Verify contact details
+                  </li>
+                </ul>
+
+                <button
+                  onClick={() => router.push("/settings_page?edit=true")}
+                  className="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-bold shadow-lg shadow-purple-500/25 hover:shadow-purple-500/40 hover:-translate-y-0.5 transition-all"
+                >
+                  Setup Profile Now
+                  <ArrowRight size={18} />
+                </button>
+
+                <button
+                  onClick={() => setShowProfileModal(false)}
+                  className="mt-4 text-sm text-slate-500 hover:text-slate-400 transition-colors"
+                >
+                  I'll do this later
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      }
+    </div >
   );
 }
 

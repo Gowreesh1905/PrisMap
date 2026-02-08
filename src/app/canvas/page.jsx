@@ -9,8 +9,11 @@ import { Stage, Layer, Line, Rect, Circle, Star, RegularPolygon, Text, Arrow, Gr
 import {
     MousePointer2, Pencil, Type, Square, Circle as CircleIcon, Triangle,
     Star as StarIcon, ArrowRight, Minus, Hexagon, Pentagon, Trash2,
-    ZoomIn, ZoomOut, Maximize2, Eraser, Undo, Redo
+    ZoomIn, ZoomOut, Maximize2, Eraser, Undo, Redo, Settings, LogOut
 } from 'lucide-react';
+import { auth } from "@/lib/firebase";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { useRouter } from "next/navigation";
 
 const CANVAS_WIDTH = typeof window !== 'undefined' ? window.innerWidth - 480 : 1200;
 const CANVAS_HEIGHT = typeof window !== 'undefined' ? window.innerHeight - 56 : 800;
@@ -27,6 +30,29 @@ export default function CanvasPage() {
     const [isDrawing, setIsDrawing] = useState(false);
     const [currentPoints, setCurrentPoints] = useState([]);
     const [selectedId, setSelectedId] = useState(null);
+    const [user, setUser] = useState(null);
+    const router = useRouter();
+
+    // Handle Authentication
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, (curr) => {
+            if (!curr) {
+                router.push("/");
+            } else {
+                setUser(curr);
+            }
+        });
+        return () => unsubscribe();
+    }, [router]);
+
+    const handleLogout = async () => {
+        try {
+            await signOut(auth);
+            router.push("/");
+        } catch (error) {
+            console.error("Logout Error:", error);
+        }
+    };
 
     // Drawing settings
     const [strokeColor, setStrokeColor] = useState('#000000');
@@ -73,22 +99,108 @@ export default function CanvasPage() {
     }, [history, historyStep]);
 
     /**
-     * Keyboard shortcuts
+     * Keyboard shortcuts - using capture phase to override browser defaults
      */
     useEffect(() => {
         const handleKeyDown = (e) => {
-            if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'z') {
-                e.preventDefault();
+            // DEBUG: Log all key events
+            console.log('[Shortcut Debug]', {
+                key: e.key,
+                code: e.code,
+                ctrl: e.ctrlKey,
+                meta: e.metaKey,
+                alt: e.altKey,
+                shift: e.shiftKey,
+                target: e.target.tagName,
+            });
+
+            // Don't trigger shortcuts when typing in inputs
+            const target = e.target;
+            const tagName = target.tagName.toUpperCase();
+            if (tagName === 'INPUT' || tagName === 'TEXTAREA' || target.isContentEditable) {
+                console.log('[Shortcut Debug] Skipping - in input field');
+                return;
+            }
+
+            let handled = false;
+
+            // Undo: Ctrl+Z
+            if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
+                console.log('[Shortcut Debug] Triggering UNDO');
                 undo();
-            } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) {
-                e.preventDefault();
+                handled = true;
+            }
+            // Redo: Ctrl+Y or Ctrl+Shift+Z
+            else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
+                console.log('[Shortcut Debug] Triggering REDO');
                 redo();
+                handled = true;
+            }
+            // Save: Ctrl+S (show notification)
+            else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+                console.log('[Shortcut Debug] Triggering SAVE');
+                const notification = document.createElement('div');
+                notification.textContent = '✓ Canvas saved';
+                notification.style.cssText = 'position:fixed;top:80px;left:50%;transform:translateX(-50%);background:#10b981;color:white;padding:8px 16px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;';
+                document.body.appendChild(notification);
+                setTimeout(() => notification.remove(), 2000);
+                handled = true;
+            }
+            // Delete: Delete or Backspace
+            else if (e.key === 'Delete' || e.key === 'Backspace') {
+                if (selectedId) {
+                    console.log('[Shortcut Debug] Triggering DELETE');
+                    deleteSelected();
+                    handled = true;
+                }
+            }
+            // Escape: Deselect or cancel current action
+            else if (e.key === 'Escape') {
+                console.log('[Shortcut Debug] Triggering ESCAPE');
+                setSelectedId(null);
+                setIsDrawing(false);
+                setCurrentPoints([]);
+                handled = true;
+            }
+            // Number keys for tool selection (1-9) - no modifiers
+            else if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+                const toolMap = {
+                    '1': 'select',
+                    '2': 'pen',
+                    '3': 'eraser',
+                    '4': 'text',
+                    '5': 'rectangle',
+                    '6': 'circle',
+                    '7': 'triangle',
+                    '8': 'star',
+                    '9': 'arrow',
+                };
+                if (toolMap[e.key]) {
+                    console.log('[Shortcut Debug] Triggering TOOL SELECT:', toolMap[e.key]);
+                    setTool(toolMap[e.key]);
+                    handled = true;
+                }
+            }
+
+            // If we handled the shortcut, prevent default and stop propagation
+            if (handled) {
+                console.log('[Shortcut Debug] Handled! Preventing default.');
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
             }
         };
 
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [undo, redo]);
+        // Use capture phase (true) to intercept events before other handlers
+        // Using document instead of window for better compatibility
+        document.addEventListener('keydown', handleKeyDown, true);
+        console.log('[Shortcut Debug] Keyboard listener attached');
+
+        return () => {
+            document.removeEventListener('keydown', handleKeyDown, true);
+            console.log('[Shortcut Debug] Keyboard listener removed');
+        };
+    }, [undo, redo, selectedId, deleteSelected]);
 
     /**
      * Handle mouse down - start drawing
@@ -705,6 +817,29 @@ export default function CanvasPage() {
                             <Maximize2 size={16} className="text-gray-700" />
                         </button>
                     </div>
+                </div>
+
+                {/* User Profile & Settings */}
+                <div className="flex items-center gap-3 ml-4 pl-4 border-l border-gray-200">
+                    <button
+                        onClick={() => router.push("/settings_page")}
+                        className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                        title="Settings"
+                    >
+                        <Settings size={20} />
+                    </button>
+                    <button
+                        onClick={handleLogout}
+                        className="h-9 w-9 overflow-hidden rounded-full border-2 border-white/50 shadow-sm active:scale-90 transition-transform overflow-hidden"
+                        title="Log Out"
+                    >
+                        <img
+                            src={user?.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${user?.email}`}
+                            alt="User Profile"
+                            referrerPolicy="no-referrer"
+                            className="h-full w-full object-cover"
+                        />
+                    </button>
                 </div>
             </header>
 
