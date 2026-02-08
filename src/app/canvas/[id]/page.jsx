@@ -14,7 +14,7 @@ import {
     ZoomIn, ZoomOut, Maximize2, Eraser, Undo, Redo, Save, Check, ArrowLeft, Image as ImageIcon,
     Copy, Clipboard, Download, AlignLeft, AlignCenter, AlignRight, AlignStartVertical,
     AlignCenterVertical, AlignEndVertical, Layers, Grid3X3, Eye, EyeOff, Lock, Unlock,
-    ChevronUp, ChevronDown, ChevronsUp, ChevronsDown, Group as GroupIcon, Ungroup
+    ChevronUp, ChevronDown, ChevronsUp, ChevronsDown, Group as GroupIcon, Ungroup, RotateCw
 } from 'lucide-react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
@@ -1158,6 +1158,8 @@ export default function CanvasPage() {
             shadowOffsetX: shape.shadowOffsetX || 0,
             shadowOffsetY: shape.shadowOffsetY || 0,
             shadowOpacity: shape.shadowOpacity || 0.5,
+            // Rotation property
+            rotation: shape.rotation || 0,
         };
 
         switch (shape.type) {
@@ -1808,6 +1810,43 @@ export default function CanvasPage() {
                                                 </div>
                                             </div>
 
+                                            {/* Rotation Control */}
+                                            <div className="mb-4">
+                                                <label className="text-xs font-semibold text-gray-600 mb-1 block flex items-center gap-1">
+                                                    <RotateCw size={12} />
+                                                    Rotation
+                                                </label>
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="range" min="0" max="360" step="1"
+                                                        value={selectedElement.rotation || 0}
+                                                        onChange={(e) => {
+                                                            const newRotation = parseInt(e.target.value);
+                                                            setElements(prev => prev.map(el =>
+                                                                el.id === selectedId
+                                                                    ? { ...el, rotation: newRotation }
+                                                                    : el
+                                                            ));
+                                                        }}
+                                                        className="flex-1"
+                                                    />
+                                                    <input
+                                                        type="number"
+                                                        value={selectedElement.rotation || 0}
+                                                        onChange={(e) => {
+                                                            const newRotation = parseInt(e.target.value) || 0;
+                                                            setElements(prev => prev.map(el =>
+                                                                el.id === selectedId
+                                                                    ? { ...el, rotation: ((newRotation % 360) + 360) % 360 }
+                                                                    : el
+                                                            ));
+                                                        }}
+                                                        className="w-12 px-1 py-1 text-xs border rounded text-center"
+                                                    />
+                                                    <span className="text-xs text-gray-400">°</span>
+                                                </div>
+                                            </div>
+
                                             {/* Shadow Controls */}
                                             <div className="mb-4 p-3 bg-gray-50 rounded-xl border border-gray-200">
                                                 <label className="text-xs font-bold text-gray-700 mb-2 block uppercase tracking-wider">Shadow</label>
@@ -1954,147 +1993,147 @@ export default function CanvasPage() {
                                                         </button>
                                                     </div>
 
-                                                {/* Text Alignment */}
-                                            <div className="mb-4">
-                                                <label className="text-xs font-semibold text-gray-600 mb-2 block">Text Align</label>
-                                                <div className="grid grid-cols-3 gap-1">
-                                                    <button
-                                                        onClick={() => updateSelectedFont({ textAlign: 'left' })}
-                                                        className={`py-2 px-3 text-xs rounded-lg border transition-colors ${(selectedElement.textAlign || 'left') === 'left' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'}`}
-                                                    >
-                                                        <AlignLeft size={14} className="mx-auto" />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => updateSelectedFont({ textAlign: 'center' })}
-                                                        className={`py-2 px-3 text-xs rounded-lg border transition-colors ${selectedElement.textAlign === 'center' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'}`}
-                                                    >
-                                                        <AlignCenter size={14} className="mx-auto" />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => updateSelectedFont({ textAlign: 'right' })}
-                                                        className={`py-2 px-3 text-xs rounded-lg border transition-colors ${selectedElement.textAlign === 'right' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'}`}
-                                                    >
-                                                        <AlignRight size={14} className="mx-auto" />
-                                                    </button>
+                                                    {/* Text Alignment */}
+                                                    <div className="mb-4">
+                                                        <label className="text-xs font-semibold text-gray-600 mb-2 block">Text Align</label>
+                                                        <div className="grid grid-cols-3 gap-1">
+                                                            <button
+                                                                onClick={() => updateSelectedFont({ textAlign: 'left' })}
+                                                                className={`py-2 px-3 text-xs rounded-lg border transition-colors ${(selectedElement.textAlign || 'left') === 'left' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'}`}
+                                                            >
+                                                                <AlignLeft size={14} className="mx-auto" />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => updateSelectedFont({ textAlign: 'center' })}
+                                                                className={`py-2 px-3 text-xs rounded-lg border transition-colors ${selectedElement.textAlign === 'center' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'}`}
+                                                            >
+                                                                <AlignCenter size={14} className="mx-auto" />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => updateSelectedFont({ textAlign: 'right' })}
+                                                                className={`py-2 px-3 text-xs rounded-lg border transition-colors ${selectedElement.textAlign === 'right' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'}`}
+                                                            >
+                                                                <AlignRight size={14} className="mx-auto" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        </div>
                                             )}
 
-                                        {/* Z-Index Controls */}
-                                        <div className="mb-4">
-                                            <label className="text-xs font-semibold text-gray-600 mb-2 block">Layer Order</label>
-                                            <div className="grid grid-cols-4 gap-1">
-                                                <button onClick={sendToBack} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Send to Back"><ChevronsDown size={14} /></button>
-                                                <button onClick={sendBackward} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Send Backward"><ChevronDown size={14} /></button>
-                                                <button onClick={bringForward} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Bring Forward"><ChevronUp size={14} /></button>
-                                                <button onClick={bringToFront} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Bring to Front"><ChevronsUp size={14} /></button>
+                                            {/* Z-Index Controls */}
+                                            <div className="mb-4">
+                                                <label className="text-xs font-semibold text-gray-600 mb-2 block">Layer Order</label>
+                                                <div className="grid grid-cols-4 gap-1">
+                                                    <button onClick={sendToBack} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Send to Back"><ChevronsDown size={14} /></button>
+                                                    <button onClick={sendBackward} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Send Backward"><ChevronDown size={14} /></button>
+                                                    <button onClick={bringForward} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Bring Forward"><ChevronUp size={14} /></button>
+                                                    <button onClick={bringToFront} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Bring to Front"><ChevronsUp size={14} /></button>
+                                                </div>
                                             </div>
-                                        </div>
 
-                                        {/* Alignment Controls */}
-                                        <div className="mb-4">
-                                            <label className="text-xs font-semibold text-gray-600 mb-2 block">Align</label>
-                                            <div className="grid grid-cols-3 gap-1">
-                                                <button onClick={() => alignSelected('left')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Left"><AlignLeft size={14} /></button>
-                                                <button onClick={() => alignSelected('center')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Center"><AlignCenter size={14} /></button>
-                                                <button onClick={() => alignSelected('right')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Right"><AlignRight size={14} /></button>
-                                                <button onClick={() => alignSelected('top')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Top"><AlignStartVertical size={14} /></button>
-                                                <button onClick={() => alignSelected('middle')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Middle"><AlignCenterVertical size={14} /></button>
-                                                <button onClick={() => alignSelected('bottom')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Bottom"><AlignEndVertical size={14} /></button>
+                                            {/* Alignment Controls */}
+                                            <div className="mb-4">
+                                                <label className="text-xs font-semibold text-gray-600 mb-2 block">Align</label>
+                                                <div className="grid grid-cols-3 gap-1">
+                                                    <button onClick={() => alignSelected('left')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Left"><AlignLeft size={14} /></button>
+                                                    <button onClick={() => alignSelected('center')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Center"><AlignCenter size={14} /></button>
+                                                    <button onClick={() => alignSelected('right')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Right"><AlignRight size={14} /></button>
+                                                    <button onClick={() => alignSelected('top')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Top"><AlignStartVertical size={14} /></button>
+                                                    <button onClick={() => alignSelected('middle')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Middle"><AlignCenterVertical size={14} /></button>
+                                                    <button onClick={() => alignSelected('bottom')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Bottom"><AlignEndVertical size={14} /></button>
+                                                </div>
                                             </div>
-                                        </div>
 
-                                        {/* Quick Actions */}
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <button onClick={copySelected} className="flex items-center justify-center gap-1 p-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-medium text-gray-700">
-                                                <Copy size={12} /> Copy
-                                            </button>
-                                            <button onClick={duplicateSelected} className="flex items-center justify-center gap-1 p-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-medium text-gray-700">
-                                                <Clipboard size={12} /> Duplicate
+                                            {/* Quick Actions */}
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <button onClick={copySelected} className="flex items-center justify-center gap-1 p-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-medium text-gray-700">
+                                                    <Copy size={12} /> Copy
+                                                </button>
+                                                <button onClick={duplicateSelected} className="flex items-center justify-center gap-1 p-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-medium text-gray-700">
+                                                    <Clipboard size={12} /> Duplicate
+                                                </button>
+                                            </div>
+
+                                            <button onClick={deleteSelected} className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-xl font-medium text-sm hover:bg-red-100 transition-colors border border-red-200">
+                                                <Trash2 size={14} /> Delete
                                             </button>
                                         </div>
+                                    </>
+                                )}
 
-                                        <button onClick={deleteSelected} className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-xl font-medium text-sm hover:bg-red-100 transition-colors border border-red-200">
-                                            <Trash2 size={14} /> Delete
-                                        </button>
+                                {!selectedElement && (
+                                    <div className="text-center text-gray-400 mt-8">
+                                        <div className="text-3xl mb-2">🎨</div>
+                                        <div className="text-xs">Select an element to edit</div>
                                     </div>
-                            </>
+                                )}
+                            </div>
                         )}
 
-                        {!selectedElement && (
-                            <div className="text-center text-gray-400 mt-8">
-                                <div className="text-3xl mb-2">🎨</div>
-                                <div className="text-xs">Select an element to edit</div>
+                        {/* LAYERS TAB */}
+                        {rightPanelTab === 'layers' && (
+                            <div>
+                                <div className="flex items-center justify-between mb-3">
+                                    <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider">Layers ({elements.length})</h4>
+                                </div>
+                                <LayersPanel
+                                    elements={elements}
+                                    selectedIds={selectedId ? [selectedId] : []}
+                                    onSelectElement={(id) => { setSelectedId(id); setTool('select'); }}
+                                    onToggleVisibility={toggleVisibility}
+                                    onToggleLock={toggleLock}
+                                    onDelete={(id) => {
+                                        const newElements = elements.filter(el => el.id !== id);
+                                        saveToHistory(newElements);
+                                        if (selectedId === id) setSelectedId(null);
+                                    }}
+                                    onMoveUp={moveLayerUp}
+                                    onMoveDown={moveLayerDown}
+                                    onOpacityChange={updateElementOpacity}
+                                />
+                            </div>
+                        )}
+
+                        {/* EXPORT TAB */}
+                        {rightPanelTab === 'export' && (
+                            <div className="space-y-4">
+                                <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">Export Canvas</h4>
+
+                                <button onClick={exportAsPNG} className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl font-medium text-sm hover:from-purple-700 hover:to-indigo-700 transition-all shadow-lg shadow-purple-500/30">
+                                    <Download size={16} /> Export as PNG
+                                </button>
+
+                                <button onClick={exportAsJPG} className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium text-sm hover:bg-gray-200 transition-colors border border-gray-200">
+                                    <Download size={16} /> Export as JPG
+                                </button>
+
+                                <div className="pt-4 border-t border-gray-100 text-xs text-gray-500">
+                                    <p className="mb-2"><strong>Tips:</strong></p>
+                                    <ul className="space-y-1 text-gray-400">
+                                        <li>• PNG: Best for transparent backgrounds</li>
+                                        <li>• JPG: Smaller file size, no transparency</li>
+                                    </ul>
+                                </div>
+
+                                <div className="pt-4 border-t border-gray-100">
+                                    <h5 className="text-xs font-bold text-gray-700 mb-2">Keyboard Shortcuts</h5>
+                                    <div className="text-xs text-gray-500 space-y-1">
+                                        <div className="flex justify-between"><span>Copy</span><kbd className="bg-gray-100 px-1 rounded">⌘C</kbd></div>
+                                        <div className="flex justify-between"><span>Paste</span><kbd className="bg-gray-100 px-1 rounded">⌘V</kbd></div>
+                                        <div className="flex justify-between"><span>Duplicate</span><kbd className="bg-gray-100 px-1 rounded">⌘D</kbd></div>
+                                        <div className="flex justify-between"><span>Undo</span><kbd className="bg-gray-100 px-1 rounded">⌘Z</kbd></div>
+                                        <div className="flex justify-between"><span>Redo</span><kbd className="bg-gray-100 px-1 rounded">⌘⇧Z</kbd></div>
+                                        <div className="flex justify-between"><span>Bring Forward</span><kbd className="bg-gray-100 px-1 rounded">]</kbd></div>
+                                        <div className="flex justify-between"><span>Send Backward</span><kbd className="bg-gray-100 px-1 rounded">[</kbd></div>
+                                        <div className="flex justify-between"><span>Snap to Grid</span><kbd className="bg-gray-100 px-1 rounded">G</kbd></div>
+                                        <div className="flex justify-between"><span>Delete</span><kbd className="bg-gray-100 px-1 rounded">Del</kbd></div>
+                                    </div>
+                                </div>
                             </div>
                         )}
                     </div>
-                        )}
-
-                    {/* LAYERS TAB */}
-                    {rightPanelTab === 'layers' && (
-                        <div>
-                            <div className="flex items-center justify-between mb-3">
-                                <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider">Layers ({elements.length})</h4>
-                            </div>
-                            <LayersPanel
-                                elements={elements}
-                                selectedIds={selectedId ? [selectedId] : []}
-                                onSelectElement={(id) => { setSelectedId(id); setTool('select'); }}
-                                onToggleVisibility={toggleVisibility}
-                                onToggleLock={toggleLock}
-                                onDelete={(id) => {
-                                    const newElements = elements.filter(el => el.id !== id);
-                                    saveToHistory(newElements);
-                                    if (selectedId === id) setSelectedId(null);
-                                }}
-                                onMoveUp={moveLayerUp}
-                                onMoveDown={moveLayerDown}
-                                onOpacityChange={updateElementOpacity}
-                            />
-                        </div>
-                    )}
-
-                    {/* EXPORT TAB */}
-                    {rightPanelTab === 'export' && (
-                        <div className="space-y-4">
-                            <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">Export Canvas</h4>
-
-                            <button onClick={exportAsPNG} className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl font-medium text-sm hover:from-purple-700 hover:to-indigo-700 transition-all shadow-lg shadow-purple-500/30">
-                                <Download size={16} /> Export as PNG
-                            </button>
-
-                            <button onClick={exportAsJPG} className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium text-sm hover:bg-gray-200 transition-colors border border-gray-200">
-                                <Download size={16} /> Export as JPG
-                            </button>
-
-                            <div className="pt-4 border-t border-gray-100 text-xs text-gray-500">
-                                <p className="mb-2"><strong>Tips:</strong></p>
-                                <ul className="space-y-1 text-gray-400">
-                                    <li>• PNG: Best for transparent backgrounds</li>
-                                    <li>• JPG: Smaller file size, no transparency</li>
-                                </ul>
-                            </div>
-
-                            <div className="pt-4 border-t border-gray-100">
-                                <h5 className="text-xs font-bold text-gray-700 mb-2">Keyboard Shortcuts</h5>
-                                <div className="text-xs text-gray-500 space-y-1">
-                                    <div className="flex justify-between"><span>Copy</span><kbd className="bg-gray-100 px-1 rounded">⌘C</kbd></div>
-                                    <div className="flex justify-between"><span>Paste</span><kbd className="bg-gray-100 px-1 rounded">⌘V</kbd></div>
-                                    <div className="flex justify-between"><span>Duplicate</span><kbd className="bg-gray-100 px-1 rounded">⌘D</kbd></div>
-                                    <div className="flex justify-between"><span>Undo</span><kbd className="bg-gray-100 px-1 rounded">⌘Z</kbd></div>
-                                    <div className="flex justify-between"><span>Redo</span><kbd className="bg-gray-100 px-1 rounded">⌘⇧Z</kbd></div>
-                                    <div className="flex justify-between"><span>Bring Forward</span><kbd className="bg-gray-100 px-1 rounded">]</kbd></div>
-                                    <div className="flex justify-between"><span>Send Backward</span><kbd className="bg-gray-100 px-1 rounded">[</kbd></div>
-                                    <div className="flex justify-between"><span>Snap to Grid</span><kbd className="bg-gray-100 px-1 rounded">G</kbd></div>
-                                    <div className="flex justify-between"><span>Delete</span><kbd className="bg-gray-100 px-1 rounded">Del</kbd></div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
                 </div>
             </div>
-        </div>
         </div >
     );
 }
