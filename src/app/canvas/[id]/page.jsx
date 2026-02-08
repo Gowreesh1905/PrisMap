@@ -93,7 +93,7 @@ export default function CanvasPage() {
     // New feature states
     const [selectedIds, setSelectedIds] = useState([]);  // Multi-selection
     const [clipboard, setClipboard] = useState(null);    // Copy/paste
-    const [snapToGrid, setSnapToGrid] = useState(false); // Grid snapping
+    const [backgroundPattern, setBackgroundPattern] = useState('grid'); // 'grid' or 'dots'
     const [rightPanelTab, setRightPanelTab] = useState('design'); // 'design' | 'layers' | 'export'
     const transformerRef = useRef(null);
 
@@ -575,15 +575,10 @@ export default function CanvasPage() {
         saveToHistory(newElements);
     }, [selectedId, selectedIds, elements, stagePos, stageScale, saveToHistory, alignElements]);
 
-    // ===== SNAP TO GRID HELPER =====
+    // ===== POSITION HELPER =====
     const snapPosition = useCallback((pos) => {
-        if (!snapToGrid) return pos;
-        const gridSize = 50;
-        return {
-            x: Math.round(pos.x / gridSize) * gridSize,
-            y: Math.round(pos.y / gridSize) * gridSize
-        };
-    }, [snapToGrid]);
+        return pos; // Free positioning (snap to grid removed)
+    }, []);
 
     // Transformer effect - attach to selected element
     useEffect(() => {
@@ -1601,10 +1596,9 @@ export default function CanvasPage() {
                         draggable={tool === 'select' && !selectedId}
                     >
                         <Layer>
-                            {/* Truly infinite grid background */}
+                            {/* Background pattern - grid or dots */}
                             {(() => {
                                 const gridSize = 50;
-                                const scaledGridSize = gridSize * stageScale;
 
                                 // Calculate visible area in canvas coordinates
                                 const startX = Math.floor((-stagePos.x / stageScale) / gridSize) * gridSize;
@@ -1612,35 +1606,51 @@ export default function CanvasPage() {
                                 const endX = startX + Math.ceil(CANVAS_WIDTH / stageScale) + gridSize;
                                 const endY = startY + Math.ceil(CANVAS_HEIGHT / stageScale) + gridSize;
 
-                                const lines = [];
+                                const elements = [];
 
-                                // Vertical lines
-                                for (let x = startX; x <= endX; x += gridSize) {
-                                    lines.push(
-                                        <Line
-                                            key={`v-${x}`}
-                                            points={[x, startY - gridSize, x, endY + gridSize]}
-                                            stroke="#e5e7eb"
-                                            strokeWidth={1 / stageScale}
-                                            listening={false}
-                                        />
-                                    );
+                                if (backgroundPattern === 'grid') {
+                                    // Grid lines pattern
+                                    for (let x = startX; x <= endX; x += gridSize) {
+                                        elements.push(
+                                            <Line
+                                                key={`v-${x}`}
+                                                points={[x, startY - gridSize, x, endY + gridSize]}
+                                                stroke="#e5e7eb"
+                                                strokeWidth={1 / stageScale}
+                                                listening={false}
+                                            />
+                                        );
+                                    }
+                                    for (let y = startY; y <= endY; y += gridSize) {
+                                        elements.push(
+                                            <Line
+                                                key={`h-${y}`}
+                                                points={[startX - gridSize, y, endX + gridSize, y]}
+                                                stroke="#e5e7eb"
+                                                strokeWidth={1 / stageScale}
+                                                listening={false}
+                                            />
+                                        );
+                                    }
+                                } else {
+                                    // Dots pattern
+                                    for (let x = startX; x <= endX; x += gridSize) {
+                                        for (let y = startY; y <= endY; y += gridSize) {
+                                            elements.push(
+                                                <Circle
+                                                    key={`dot-${x}-${y}`}
+                                                    x={x}
+                                                    y={y}
+                                                    radius={2 / stageScale}
+                                                    fill="#d1d5db"
+                                                    listening={false}
+                                                />
+                                            );
+                                        }
+                                    }
                                 }
 
-                                // Horizontal lines
-                                for (let y = startY; y <= endY; y += gridSize) {
-                                    lines.push(
-                                        <Line
-                                            key={`h-${y}`}
-                                            points={[startX - gridSize, y, endX + gridSize, y]}
-                                            stroke="#e5e7eb"
-                                            strokeWidth={1 / stageScale}
-                                            listening={false}
-                                        />
-                                    );
-                                }
-
-                                return lines;
+                                return elements;
                             })()}
 
                             {/* Render all elements */}
@@ -1829,18 +1839,26 @@ export default function CanvasPage() {
                         {/* DESIGN TAB */}
                         {rightPanelTab === 'design' && (
                             <div className="space-y-6">
-                                {/* Snap to Grid Toggle */}
+                                {/* Background Pattern Toggle */}
                                 <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
                                     <div className="flex items-center gap-2">
                                         <Grid3X3 size={16} className="text-gray-600" />
-                                        <span className="text-xs font-semibold text-gray-700">Snap to Grid</span>
+                                        <span className="text-xs font-semibold text-gray-700">Background</span>
                                     </div>
-                                    <button
-                                        onClick={() => setSnapToGrid(!snapToGrid)}
-                                        className={`w-10 h-6 rounded-full transition-colors ${snapToGrid ? 'bg-purple-600' : 'bg-gray-300'}`}
-                                    >
-                                        <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${snapToGrid ? 'translate-x-5' : 'translate-x-1'}`} />
-                                    </button>
+                                    <div className="flex gap-1">
+                                        <button
+                                            onClick={() => setBackgroundPattern('grid')}
+                                            className={`px-2 py-1 text-xs font-medium rounded-lg transition-colors ${backgroundPattern === 'grid' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
+                                        >
+                                            Grid
+                                        </button>
+                                        <button
+                                            onClick={() => setBackgroundPattern('dots')}
+                                            className={`px-2 py-1 text-xs font-medium rounded-lg transition-colors ${backgroundPattern === 'dots' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
+                                        >
+                                            Dots
+                                        </button>
+                                    </div>
                                 </div>
 
                                 {/* Colors */}
