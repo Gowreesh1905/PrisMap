@@ -1,3 +1,16 @@
+/**
+ * @fileoverview Keyboard Shortcuts Page Component
+ * 
+ * This page displays all available keyboard shortcuts in PrisMap,
+ * organized by category (Global, Canvas, Tools). The page features
+ * a glassmorphism design style consistent with the login page.
+ * 
+ * @module app/shortcuts/page
+ * @requires react
+ * @requires next/navigation
+ * @requires lucide-react
+ */
+
 "use client";
 
 import React from "react";
@@ -5,7 +18,24 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Keyboard, Command } from "lucide-react";
 
 /**
- * Keyboard shortcuts data organized by category
+ * @typedef {Object} ShortcutItem
+ * @property {string[]} keys - Array of key names that form the shortcut combination
+ * @property {string} description - Human-readable description of what the shortcut does
+ */
+
+/**
+ * @typedef {Object} ShortcutsData
+ * @property {ShortcutItem[]} global - Global shortcuts available throughout the app
+ * @property {ShortcutItem[]} canvas - Shortcuts specific to canvas operations
+ * @property {ShortcutItem[]} tools - Shortcuts for tool selection
+ */
+
+/**
+ * Keyboard shortcuts data organized by category.
+ * Contains all available keyboard shortcuts in PrisMap grouped into
+ * global, canvas, and tool selection categories.
+ * 
+ * @constant {ShortcutsData}
  */
 const shortcuts = {
     global: [
@@ -34,7 +64,17 @@ const shortcuts = {
 };
 
 /**
- * Keyboard key badge component with glassmorphism styling
+ * Keyboard key badge component with glassmorphism styling.
+ * Renders a single keyboard key in a styled badge format.
+ * 
+ * @function KeyBadge
+ * @param {Object} props - Component props
+ * @param {React.ReactNode} props.children - The key text to display inside the badge
+ * @returns {JSX.Element} A styled kbd element representing a keyboard key
+ * 
+ * @example
+ * <KeyBadge>Ctrl</KeyBadge>
+ * <KeyBadge>K</KeyBadge>
  */
 function KeyBadge({ children }) {
     return (
@@ -45,7 +85,17 @@ function KeyBadge({ children }) {
 }
 
 /**
- * Shortcut row component
+ * Shortcut row component that displays a single keyboard shortcut.
+ * Shows the description on the left and the key combination on the right.
+ * 
+ * @function ShortcutRow
+ * @param {Object} props - Component props
+ * @param {string[]} props.keys - Array of key names in the shortcut combination
+ * @param {string} props.description - Description of what the shortcut does
+ * @returns {JSX.Element} A row displaying the shortcut and its description
+ * 
+ * @example
+ * <ShortcutRow keys={["Ctrl", "S"]} description="Save canvas" />
  */
 function ShortcutRow({ keys, description }) {
     return (
@@ -64,7 +114,24 @@ function ShortcutRow({ keys, description }) {
 }
 
 /**
- * Shortcut section component with glassmorphism card
+ * Shortcut section component with glassmorphism card styling.
+ * Groups related shortcuts under a titled section with an icon.
+ * 
+ * @function ShortcutSection
+ * @param {Object} props - Component props
+ * @param {string} props.title - The section title (e.g., "Global", "Canvas")
+ * @param {React.ComponentType<{size: number, className: string}>} props.icon - Lucide icon component
+ * @param {ShortcutItem[]} props.items - Array of shortcut items to display
+ * @param {string} props.color - Tailwind CSS gradient class for the icon background
+ * @returns {JSX.Element} A section card containing grouped shortcuts
+ * 
+ * @example
+ * <ShortcutSection
+ *   title="Global"
+ *   icon={Command}
+ *   items={shortcuts.global}
+ *   color="bg-gradient-to-br from-teal-500 to-emerald-600"
+ * />
  */
 function ShortcutSection({ title, icon: Icon, items, color }) {
     return (
@@ -87,7 +154,22 @@ function ShortcutSection({ title, icon: Icon, items, color }) {
 }
 
 /**
- * Keyboard Shortcuts page with glassmorphism styling matching the login page
+ * Keyboard Shortcuts Page Component.
+ * 
+ * Main page component that displays all available keyboard shortcuts in PrisMap.
+ * Features a glassmorphism design style consistent with the login page, including:
+ * - Animated background blobs with blur effects
+ * - Glass-effect cards with backdrop blur
+ * - Organized shortcut sections (Global, Canvas, Tools)
+ * - A Pro Tip section highlighting useful shortcuts
+ * - Back navigation button
+ * 
+ * @function ShortcutsPage
+ * @returns {JSX.Element} The complete keyboard shortcuts page
+ * 
+ * @example
+ * // This is a Next.js page component, accessed via /shortcuts route
+ * // No direct usage required - automatically rendered by Next.js routing
  */
 export default function ShortcutsPage() {
     const router = useRouter();
