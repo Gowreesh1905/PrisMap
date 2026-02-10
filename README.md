@@ -388,6 +388,62 @@ PrisMap uses a **CSS custom properties** based theming system defined in `global
 
 ## 🧩 UML Diagrams
 
+### Sequence Diagram
+
+End-to-end interaction flow across all system components — from login through canvas editing to logout.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant LP as LoginPage
+    participant FA as Firebase Auth
+    participant DB as Dashboard
+    participant NB as Navbar
+    participant FS as Firestore DB
+    participant CP as CanvasPage
+
+    %% Authentication Flow
+    User->>LP: Click "Login with Google"
+    LP->>FA: authenticateUser()
+    FA-->>LP: authSuccess(userData)
+    LP->>DB: navigateToDashboard(userData)
+
+    %% Dashboard Load
+    DB->>FS: fetchUserProjects(userId)
+    FS-->>DB: projectsList
+    DB->>NB: renderNavbar(userData)
+    DB-->>User: Display projects
+
+    %% Create New Canvas
+    User->>DB: Click "New Canvas"
+    DB->>FS: createProject()
+    FS-->>DB: projectId
+    DB->>CP: navigateToCanvas(projectId)
+
+    %% Canvas Load & Render
+    CP->>FS: loadCanvas(projectId)
+    FS-->>CP: canvasData
+    CP-->>User: Render canvas elements
+
+    %% Drawing & Auto-Save
+    User->>CP: Draw shapes
+    CP->>CP: updateCanvasState()
+    CP->>CP: saveHistory()
+    CP->>FS: autoSaveCanvas(canvasData)
+    FS-->>CP: saveConfirmed
+
+    %% Navigation Back
+    User->>CP: Click "Back to Dashboard"
+    CP->>DB: navigateBack()
+
+    %% Logout
+    User->>NB: Click Logout
+    NB->>FA: logoutUser()
+    FA-->>NB: logoutSuccess
+    NB->>LP: redirectToLogin()
+```
+
 ### Use Case Diagram
 
 Visualizing user actions and their interactions with external services (Google Authentication, Firebase Database/Storage).
