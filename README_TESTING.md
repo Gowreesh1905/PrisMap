@@ -37,5 +37,9 @@ npm run test:ui
 
 ## Test Location
 
-- The tests are located in: `src/app/__tests__` and other `__tests__` directories.
+- The tests are located- **Dashboard Tests**: `src/app/dashboard/__tests__/page.test.jsx`
+- **Canvas Tests**: `src/app/canvas/__tests__/page.test.jsx`
+- **Route Tests**: `src/app/__tests__/routes.test.jsx`
+- **Login Tests**: `src/app/__tests__/page.test.jsx`
+- **Navbar Tests**: `src/components/__tests__/Navbar.test.jsx`ories.
 - The script targets all files ending in `.test.jsx`, `.test.js`, etc.
