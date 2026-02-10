@@ -75,6 +75,7 @@ describe('Shortcuts Page', () => {
         render(<ShortcutsPage />);
         expect(screen.getByText('Keyboard Shortcuts')).toBeInTheDocument();
         expect(screen.getByText('Global')).toBeInTheDocument();
-        expect(screen.getByText('Ctrl')).toBeInTheDocument();
+        const ctrlKeys = screen.getAllByText('Ctrl');
+        expect(ctrlKeys.length).toBeGreaterThan(0);
     });
 });
