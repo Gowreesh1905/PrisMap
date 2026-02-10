@@ -32,6 +32,7 @@
 - [Keyboard Shortcuts](#-keyboard-shortcuts)
 - [Application Pages](#-application-pages)
 - [Architecture & Design](#-architecture--design)
+- [UML Diagrams](#-uml-diagrams)
 - [Contributing](#-contributing)
 - [Acknowledgments](#-acknowledgments)
 
@@ -382,6 +383,122 @@ PrisMap uses a **CSS custom properties** based theming system defined in `global
 | `countryCode` | `string` | Phone country code |
 | `countryName` | `string` | Phone country name |
 | `updatedAt` | `timestamp` | Last profile update |
+
+---
+
+## 🧩 UML Diagrams
+
+### Class Diagram
+
+Structure of the application's main components, their attributes, methods, and relationships.
+
+```mermaid
+classDiagram
+    class LoginPage {
+        -isLoading : boolean
+        +handleLogin() : void
+        +render() : JSX
+    }
+
+    class Dashboard {
+        -isLoading : boolean
+        -currentUser : Object
+        -projects : Project[]
+        -isProfileModalOpen : boolean
+        +checkUserProfile() : void
+        +createNewCanvas() : void
+        +render() : JSX
+    }
+
+    class ProjectCard {
+        -projectId : string
+        -title : string
+        -createdAt : Date
+        +openProject() : void
+        +render() : JSX
+    }
+
+    class SettingsPage {
+        -isLoading : boolean
+        -isSaving : boolean
+        -isEditing : boolean
+        -userProfile : Object
+        -avatarUrl : string
+        -bio : string
+        -jobTitle : string
+        -phoneNumber : string
+        -statusMessage : string
+        -isDeleteModalOpen : boolean
+        +saveProfile() : void
+        +deleteAccount() : void
+        +render() : JSX
+    }
+
+    class FirebaseConfig {
+        +auth
+        +database
+        +storage
+        +googleAuthProvider
+    }
+
+    class CanvasPage {
+        -canvasId : string
+        -activeTool : string
+        -elements : Shape[]
+        -history : Shape[][]
+        -historyIndex : number
+        -isDrawing : boolean
+        -currentStroke : Point[]
+        -selectedElementId : string
+        -canvasTitle : string
+        -isEditingTitle : boolean
+        -strokeColor : string
+        -fillColor : string
+        -strokeWidth : number
+        -zoomLevel : number
+        -canvasPosition : Object
+        +loadCanvas() : void
+        +saveCanvas() : void
+        +autoSave() : void
+        +saveHistory() : void
+        +submitTitle() : void
+        +undo() : void
+        +redo() : void
+        +onMouseDown() : void
+        +onMouseMove() : void
+        +onMouseUp() : void
+        +onZoom() : void
+        +clearCanvas() : void
+        +deleteSelectedElement() : void
+        +renderShape() : JSX
+        +render() : JSX
+    }
+
+    class Navbar {
+        -currentUser : Object
+        -projects : Project[]
+        -isSearchOpen : boolean
+        -searchText : string
+        -isDarkMode : boolean
+        +logout() : void
+        +toggleTheme() : void
+        +render() : JSX
+    }
+
+    LoginPage ..> FirebaseConfig : uses
+    LoginPage ..> Dashboard : login success
+    Dashboard --> ProjectCard : displays
+    Dashboard --> SettingsPage : open profile
+    Dashboard --> CanvasPage : create / open project
+    Dashboard ..> FirebaseConfig : uses
+    SettingsPage --> Dashboard : return
+    SettingsPage ..> FirebaseConfig : uses
+    CanvasPage --> Dashboard : back
+    CanvasPage ..> FirebaseConfig : uses
+    CanvasPage --> Navbar : renders
+    Navbar --* Dashboard : includes
+    Navbar ..> Navbar : includes
+```
 
 ---
 
