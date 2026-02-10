@@ -19,10 +19,6 @@ export default defineConfig({
             }
         },
         pool: 'forks',
-        poolOptions: {
-            forks: {
-                isolate: false
-            }
-        }
+        isolate: false,
     },
 })
