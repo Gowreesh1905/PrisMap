@@ -388,6 +388,57 @@ PrisMap uses a **CSS custom properties** based theming system defined in `global
 
 ## 🧩 UML Diagrams
 
+### Use Case Diagram
+
+Visualizing user actions and their interactions with external services (Google Authentication, Firebase Database/Storage).
+
+```mermaid
+flowchart LR
+    subgraph USER_ACTIONS["🔷 USER ACTIONS"]
+        direction TB
+        Start(["▶ Start User Session"]) --> SignIn["🔑 Sign In"]
+        SignIn --> DeleteAccount["🗑️ Delete Account"]
+        SignIn --> CreateNew["📁 Create New Project"]
+        SignIn --> UpdateProfile["👤 Update Profile"]
+        SignIn --> ToggleTheme["🎨 Toggle Theme"]
+        SignIn --> SearchProjects["🔍 Search Projects"]
+        SignIn --> ViewProjectList["📋 View Project List"]
+        SignIn --> ExportImage["📤 Export as Image"]
+        SignIn --> DrawShapes["✏️ Draw Shapes or Freehand"]
+        SignIn --> AddText["🔤 Add Text or Annotations"]
+        SignIn --> ManageLayers["📐 Manage Layers"]
+        SignIn --> UploadImages["🖼️ Upload Images"]
+
+        DrawShapes -->|Auto-save| AutoSave["💾 Auto Save Work"]
+        AddText -->|Auto-save| AutoSave
+        ManageLayers -->|Auto-save| AutoSave
+
+        DeleteAccount --> EndSession(["⏹ End User Session"])
+        CreateNew --> EndSession
+        UpdateProfile --> EndSession
+        ToggleTheme --> EndSession
+        SearchProjects --> EndSession
+        ViewProjectList --> EndSession
+        ExportImage --> EndSession
+        DrawShapes --> EndSession
+        AddText --> EndSession
+        ManageLayers --> EndSession
+        UploadImages --> EndSession
+    end
+
+    subgraph EXTERNAL_SERVICES["⚙️ EXTERNAL SERVICES"]
+        direction TB
+        GoogleAuth["🔐 Google Authentication"]
+        FirebaseDB["🗄️ Firebase Database or Storage"]
+    end
+
+    SignIn -->|Authenticate| GoogleAuth
+    DeleteAccount -->|Delete user data| FirebaseDB
+    CreateNew -->|Create project document| FirebaseDB
+    AutoSave -->|Sync changes| FirebaseDB
+    UploadImages -->|Store image file| FirebaseDB
+```
+
 ### Class Diagram
 
 Structure of the application's main components, their attributes, methods, and relationships.
