@@ -388,6 +388,14 @@ PrisMap uses a **CSS custom properties** based theming system defined in `global
 
 ## 🧩 UML Diagrams
 
+### Architecture Diagram
+
+High-level system architecture showing the Client (Browser), Frontend Application Layer, and Firebase Backend.
+
+<p align="center">
+  <img src="public/architecture-diagram.png" alt="PrisMap Architecture Diagram" width="800" />
+</p>
+
 ### Sequence Diagram
 
 End-to-end interaction flow across all system components — from login through canvas editing to logout.
