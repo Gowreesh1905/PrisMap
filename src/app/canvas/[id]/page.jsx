@@ -713,6 +713,9 @@ export default function CanvasPage() {
             triangleTool: 'triangle',
             starTool: 'star',
             arrowTool: 'arrow',
+            lineTool: 'line',
+            hexagonTool: 'hexagon',
+            pentagonTool: 'pentagon',
         };
 
         /** Build combo string from a KeyboardEvent (matches ShortcutContext format) */

@@ -27,6 +27,9 @@ const DEFAULT_SHORTCUTS = {
     triangleTool: { combo: "7", description: "Triangle shape", category: "tools" },
     starTool: { combo: "8", description: "Star shape", category: "tools" },
     arrowTool: { combo: "9", description: "Arrow tool", category: "tools" },
+    lineTool: { combo: "l", description: "Line tool", category: "tools" },
+    hexagonTool: { combo: "h", description: "Hexagon shape", category: "tools" },
+    pentagonTool: { combo: "j", description: "Pentagon shape", category: "tools" },
 };
 
 const STORAGE_KEY = "prismap-shortcuts";
