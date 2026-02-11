@@ -21,6 +21,7 @@ import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from '@/lib/firebase';
 import LayersPanel from '@/components/LayersPanel';
+import { useShortcuts } from '@/contexts/ShortcutContext';
 
 const CANVAS_WIDTH = typeof window !== 'undefined' ? window.innerWidth - 480 : 1200;
 const CANVAS_HEIGHT = typeof window !== 'undefined' ? window.innerHeight - 56 : 800;
@@ -693,9 +694,39 @@ export default function CanvasPage() {
     };
 
     /**
-     * Keyboard shortcuts - using capture phase to override browser defaults
+     * Keyboard shortcuts — reads bindings from ShortcutContext so user
+     * customizations on /shortcuts are reflected here in real time.
      */
+    const { getComboToActionMap } = useShortcuts();
+
     useEffect(() => {
+        const comboMap = getComboToActionMap();
+
+        // Map action IDs to the tool name they activate
+        const actionToTool = {
+            selectTool: 'select',
+            penTool: 'pen',
+            eraserTool: 'eraser',
+            textTool: 'text',
+            rectangleTool: 'rectangle',
+            circleTool: 'circle',
+            triangleTool: 'triangle',
+            starTool: 'star',
+            arrowTool: 'arrow',
+        };
+
+        /** Build combo string from a KeyboardEvent (matches ShortcutContext format) */
+        const eventToCombo = (e) => {
+            const parts = [];
+            if (e.ctrlKey || e.metaKey) parts.push('ctrl');
+            if (e.shiftKey) parts.push('shift');
+            if (e.altKey) parts.push('alt');
+            let key = e.key.toLowerCase();
+            if (key === ' ') key = 'space';
+            parts.push(key);
+            return parts.join('+');
+        };
+
         const handleKeyDown = (e) => {
             // Skip if editing title
             if (isEditingTitle) return;
@@ -708,87 +739,64 @@ export default function CanvasPage() {
             }
 
             let handled = false;
+            const combo = eventToCombo(e);
+            const action = comboMap[combo];
 
-            // Undo: Ctrl+Z
-            if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
-                undo();
-                handled = true;
+            // --- Customizable shortcuts (from ShortcutContext) ---
+            if (action) {
+                switch (action) {
+                    case 'undo': undo(); handled = true; break;
+                    case 'redo': redo(); handled = true; break;
+                    case 'save': saveCanvas(elements, canvasTitle); handled = true; break;
+                    case 'copy': copySelected(); handled = true; break;
+                    case 'paste': pasteClipboard(); handled = true; break;
+                    case 'duplicate': duplicateSelected(); handled = true; break;
+                    case 'delete':
+                        if (selectedId) {
+                            const newElements = elements.filter(el => el.id !== selectedId);
+                            saveToHistory(newElements);
+                            setSelectedId(null);
+                            handled = true;
+                        }
+                        break;
+                    case 'escape':
+                        setSelectedId(null);
+                        setIsDrawing(false);
+                        setCurrentPoints([]);
+                        handled = true;
+                        break;
+                    default:
+                        // Check if it's a tool-selection action
+                        if (actionToTool[action]) {
+                            setTool(actionToTool[action]);
+                            handled = true;
+                        }
+                        break;
+                }
             }
-            // Redo: Ctrl+Y or Ctrl+Shift+Z
-            else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
-                redo();
-                handled = true;
-            }
-            // Save: Ctrl+S
-            else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-                saveCanvas(elements, canvasTitle);
-                handled = true;
-            }
-            // Copy
-            else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
-                copySelected();
-                handled = true;
-            }
-            // Paste
-            else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
-                pasteClipboard();
-                handled = true;
-            }
-            // Duplicate
-            else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
-                duplicateSelected();
-                handled = true;
-            }
-            // Delete: Delete or Backspace
-            else if (e.key === 'Delete' || e.key === 'Backspace') {
-                if (selectedId) {
-                    const newElements = elements.filter(el => el.id !== selectedId);
-                    saveToHistory(newElements);
-                    setSelectedId(null);
+
+            // --- Non-customizable shortcuts (z-index, grid toggle) ---
+            if (!handled) {
+                if (e.key === ']' && !e.ctrlKey && !e.metaKey) {
+                    e.shiftKey ? bringToFront() : bringForward();
+                    handled = true;
+                } else if (e.key === '[' && !e.ctrlKey && !e.metaKey) {
+                    e.shiftKey ? sendToBack() : sendBackward();
+                    handled = true;
+                } else if (e.key === 'g' && !e.ctrlKey && !e.metaKey) {
+                    setBackgroundPattern(prev => prev === 'grid' ? 'dots' : 'grid');
                     handled = true;
                 }
             }
-            // Escape: Deselect or cancel current action
-            else if (e.key === 'Escape') {
+
+            // Also handle Backspace as delete (always, in addition to the customizable delete key)
+            if (!handled && e.key === 'Backspace' && selectedId) {
+                const newElements = elements.filter(el => el.id !== selectedId);
+                saveToHistory(newElements);
                 setSelectedId(null);
-                setIsDrawing(false);
-                setCurrentPoints([]);
                 handled = true;
-            }
-            // Z-index: [ and ] keys
-            else if (e.key === ']' && !e.ctrlKey && !e.metaKey) {
-                e.shiftKey ? bringToFront() : bringForward();
-                handled = true;
-            }
-            else if (e.key === '[' && !e.ctrlKey && !e.metaKey) {
-                e.shiftKey ? sendToBack() : sendBackward();
-                handled = true;
-            }
-            // Toggle background pattern with 'g'
-            else if (e.key === 'g' && !e.ctrlKey && !e.metaKey) {
-                setBackgroundPattern(prev => prev === 'grid' ? 'dots' : 'grid');
-                handled = true;
-            }
-            // Number keys for tool selection (1-9) - no modifiers
-            else if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
-                const toolMap = {
-                    '1': 'select',
-                    '2': 'pen',
-                    '3': 'eraser',
-                    '4': 'text',
-                    '5': 'rectangle',
-                    '6': 'circle',
-                    '7': 'triangle',
-                    '8': 'star',
-                    '9': 'arrow',
-                };
-                if (toolMap[e.key]) {
-                    setTool(toolMap[e.key]);
-                    handled = true;
-                }
             }
 
-            // If we handled the shortcut, prevent default and stop propagation
             if (handled) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -796,13 +804,9 @@ export default function CanvasPage() {
             }
         };
 
-        // Use capture phase (true) to intercept events before other handlers
         document.addEventListener('keydown', handleKeyDown, true);
-
-        return () => {
-            document.removeEventListener('keydown', handleKeyDown, true);
-        };
-    }, [undo, redo, isEditingTitle, saveCanvas, elements, canvasTitle, copySelected, pasteClipboard, duplicateSelected, selectedId, saveToHistory, bringToFront, sendToBack, bringForward, sendBackward]);
+        return () => document.removeEventListener('keydown', handleKeyDown, true);
+    }, [undo, redo, isEditingTitle, saveCanvas, elements, canvasTitle, copySelected, pasteClipboard, duplicateSelected, selectedId, saveToHistory, bringToFront, sendToBack, bringForward, sendBackward, getComboToActionMap]);
 
     /**
      * Handle mouse down - start drawing
