@@ -280,7 +280,7 @@ describe('Component Integration Tests', () => {
 
 | Module | File | Tests | Categories |
 |---|---|---|---|
-| Landing Page | `app/page.test.jsx` | 3 | UI |
+| Login Page | `app/page.test.jsx` | 3 | UI |
 | Dashboard | `app/dashboard/page.test.jsx` | 4 | Auth, Data, UI |
 | Settings | `app/settings_page/page.test.jsx` | 19 | Auth, Data, UI, Interaction, Nav |
 | Shortcuts | `app/shortcuts/page.test.jsx` | 11 | UI, Nav, Accessibility |
