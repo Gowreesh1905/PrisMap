@@ -38,4 +38,18 @@ npm run test:ui
 ## Test Location
 
 - The tests are located in: `src/app/__tests__` and other `__tests__` directories.
-- The script targets all files ending in `.test.jsx`, `.test.js`, etc.
+## Troubleshooting
+ 
+ ### Common Issues
+ 
+ 1. **Unexpected "<<" (Syntax Error)**:
+    - **Reason**: This usually means there are unresolved git merge conflict markers in a test file.
+    - **Fix**: Open the file mentioned in the error, find the `<<<<<<<`, `=======`, and `>>>>>>>` blocks, and resolve the conflict manually.
+ 
+ 2. **Worker OOM (Out of Memory)**:
+    - **Reason**: Complex components (like the Infinite Canvas) can exceed the default memory limit of the test runner.
+    - **Fix**: Run tests with increased memory: `NODE_OPTIONS=--max-old-space-size=4096 npm run test:run`.
+ 
+ 3. **TDZ (Temporal Dead Zone)**:
+    - **Reason**: Variables or functions used in `useEffect` or other hooks before they are defined.
+    - **Fix**: Use `useCallback` to hoist function definitions or move the definition above the hook that references it.

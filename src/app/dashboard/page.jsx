@@ -113,22 +113,41 @@ export default function Dashboard() {
 
   return (
     <div className="relative min-h-screen w-full bg-[var(--color-bg-base)]">
-      {/* Decorative Gradient Background Elements */}
+      {/* 
+        SECTION: Decorative Background
+        Description: Creates a premium glassmorphism effect using blurred circles.
+        'pointer-events-none' ensures clicks pass through these elements to buttons underneath.
+      */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden="true">
         <div className="absolute top-[-10%] left-[-10%] h-[500px] w-[500px] rounded-full bg-purple-600/10 blur-[120px]" />
         <div className="absolute bottom-[-10%] right-[-10%] h-[500px] w-[500px] rounded-full bg-blue-600/10 blur-[120px]" />
       </div>
 
+      {/* 
+        COMPONENT: Global Navigation Bar
+        Props: Passes 'user' for profile display and 'projects' for search/stats functionality.
+      */}
       <Navbar user={user} projects={projects} />
 
       <main className="relative z-10 mx-auto max-w-7xl px-6 pt-32 pb-20">
+        {/* 
+          SECTION: Page Header
+          Description: Shows the title and a live counter of existing projects.
+        */}
         <header className="mb-10 flex justify-between items-end">
           <h1 className="text-3xl font-bold text-[var(--color-text-main)]">My Canvases</h1>
           <p className="text-sm font-medium text-slate-500">{projects.length} Total Projects</p>
         </header>
 
+        {/* 
+          SECTION: Project Grid
+          Description: Responsive grid layout (1 col on mobile, up to 5 on large screens).
+        */}
         <section className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
-          {/* Create New Canvas Action Card */}
+          {/* 
+            ACTION CARD: Create New Canvas
+            Clicking this generates a new UUID and redirects the user to a blank canvas.
+          */}
           <button
             onClick={handleCreateCanvas}
             className="group aspect-[4/5] flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-purple-300/20 bg-purple-500/5 hover:bg-purple-500/10 transition-all duration-300"
@@ -139,7 +158,10 @@ export default function Dashboard() {
             <span className="mt-4 text-sm font-semibold text-purple-300">New Project</span>
           </button>
 
-          {/* Project Mapping Area */}
+          {/* 
+            DYNAMIC RENDER: Project Cards
+            Description: Iterates over the 'projects' array from Firestore and renders a card for each.
+          */}
           {projects.map((project) => (
             <ProjectCard
               key={project.id}
@@ -150,7 +172,10 @@ export default function Dashboard() {
           ))}
         </section>
 
-        {/* Empty State: Only visible if projects array is empty */}
+        {/* 
+          CONDITIONAL SECTION: Empty State
+          Description: Only visible if the 'projects' array length is 0. 
+        */}
         {projects.length === 0 && (
           <div className="mt-24 flex flex-col items-center justify-center text-center opacity-60">
             <Layout size={48} className="mb-4 text-slate-600" />
@@ -160,12 +185,16 @@ export default function Dashboard() {
         )}
       </main>
 
-      {/* Complete Profile Modal */}
+      {/* 
+        CONDITIONAL COMPONENT: Profile Completion Modal
+        Logic: Triggers if 'showProfileModal' is true (set by the profile check useEffect).
+        Purpose: Ensures users add required info (bio, job title) for better collaboration.
+      */}
       {
         showProfileModal && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
             <div className="w-full max-w-md rounded-3xl border border-purple-500/30 bg-[var(--color-card)] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-300">
-              {/* Header */}
+              {/* Modal Banner Area */}
               <div className="bg-gradient-to-r from-indigo-500/20 to-purple-500/20 p-6 flex flex-col items-center">
                 <div className="h-16 w-16 mb-4 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center shadow-lg shadow-purple-500/30">
                   <UserCheck size={32} className="text-white" />
@@ -173,12 +202,13 @@ export default function Dashboard() {
                 <h2 className="text-2xl font-bold text-[var(--color-text-main)]">Complete Your Profile</h2>
               </div>
 
-              {/* Content */}
+              {/* Modal Body & CTA */}
               <div className="p-8 text-center">
                 <p className="text-slate-400 mb-6">
                   Welcome to PrisMap! Take a moment to set up your professional profile to help others recognize you.
                 </p>
 
+                {/* Checklist of missing items */}
                 <ul className="text-left space-y-3 mb-8 bg-[var(--color-bg-base)]/50 p-4 rounded-xl border border-[var(--color-border-ui)]">
                   <li className="flex items-center gap-3 text-sm text-[var(--color-text-main)]">
                     <div className="h-2 w-2 rounded-full bg-purple-400" />
@@ -194,6 +224,7 @@ export default function Dashboard() {
                   </li>
                 </ul>
 
+                {/* Primary Button: Navigates to settings in edit mode */}
                 <button
                   onClick={() => router.push("/settings_page?edit=true")}
                   className="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-bold shadow-lg shadow-purple-500/25 hover:shadow-purple-500/40 hover:-translate-y-0.5 transition-all"
@@ -202,6 +233,7 @@ export default function Dashboard() {
                   <ArrowRight size={18} />
                 </button>
 
+                {/* Secondary Button: Dismisses modal for now */}
                 <button
                   onClick={() => setShowProfileModal(false)}
                   className="mt-4 text-sm text-slate-500 hover:text-slate-400 transition-colors"

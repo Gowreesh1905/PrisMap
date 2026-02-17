@@ -3,8 +3,8 @@
 **Project:** PrisMap  
 **Testing Framework:** Vitest 4 + React Testing Library  
 **Environment:** happy-dom  
-**Date:** February 10, 2026  
-**Branch:** `full-scale-I-test`
+**Date:** February 13, 2026  
+**Branch:** `full-scale-I-test` (Manual Recovery)
 
 ---
 
@@ -14,14 +14,13 @@
 |---|---|
 | Total Test Suites | 9 |
 | Suites Passed | 7 |
-| Suites Skipped | 1 (Canvas standalone — TDZ issue) |
-| Suites Failed | 0 |
-| Total Test Cases | 76 |
+| Suites Errored | 2 (Canvas suites — conflicts/OOM) |
+| Total Test Cases | 61 (15 previously in canvas/page.test.jsx were removed) |
 | Tests Passed | 54 |
-| Tests Skipped | 15 |
+| Tests Skipped | 0 |
 | Tests Failed | 0 |
-| Duration | ~61s |
-| Exit Code | **0 (SUCCESS)** |
+| Duration | ~85s |
+| Exit Code | **1 (ERROR)** |
 
 ---
 
@@ -36,7 +35,7 @@
 | 5 | `src/app/settings_page/page.test.jsx` | Settings Page Integration | 19 | 19 | 0 | 0 |
 | 6 | `src/app/shortcuts/page.test.jsx` | Shortcuts Page Integration | 11 | 11 | 0 | 0 |
 | 7 | `src/hooks/useKeyboardShortcuts.test.js` | useKeyboardShortcuts Hook | 8 | 8 | 0 | 0 |
-| 8 | `src/app/canvas/page.test.jsx` | Canvas Standalone Page | 15 | 0 | 15 | 0 |
+| 8 | `src/app/canvas/page.test.jsx` | Canvas Standalone Page | 0 | 0 | 0 | ❌ Errored (Merge Conflict/Empty) |
 | 9 | `src/app/canvas/[id]/page.test.jsx` | Canvas [id] Page | 7 | 0 | 0 | ⚠️ Worker OOM |
 
 ---
@@ -132,25 +131,11 @@
 | 7 | normalizes space key to "space" | Logic | ✅ Pass |
 | 8 | does not call unrelated shortcuts | Logic | ✅ Pass |
 
-### 3.8 Canvas Standalone Page (`src/app/canvas/page.test.jsx`) — ⏭ 15/15 Skipped *(NEW)*
+### 3.8 Canvas Standalone Page (`src/app/canvas/page.test.jsx`) — ❌ Errored / Missing
 
-| # | Test Case | Reason |
+| # | Test Case | Status |
 |---|---|---|
-| 1 | redirects to login if not authenticated | Skipped — TDZ |
-| 2 | renders the Infinite Canvas header text | Skipped — TDZ |
-| 3 | renders the PrisMap brand text | Skipped — TDZ |
-| 4 | renders the tool palette with core tools | Skipped — TDZ |
-| 5 | renders shape tools | Skipped — TDZ |
-| 6 | renders undo and redo buttons | Skipped — TDZ |
-| 7 | undo is disabled initially | Skipped — TDZ |
-| 8 | renders zoom controls | Skipped — TDZ |
-| 9 | renders zoom percentage display at 100% | Skipped — TDZ |
-| 10 | selects a shape tool when clicked | Skipped — TDZ |
-| 11 | renders the Konva Stage (mocked) | Skipped — TDZ |
-| 12 | renders the Clear Canvas button | Skipped — TDZ |
-| 13 | renders the Settings button | Skipped — TDZ |
-| 14 | renders the Log Out button | Skipped — TDZ |
-| 15 | renders Tools and Shapes section headers | Skipped — TDZ |
+| 1–15 | All integration tests | ❌ Error: Unexpected "<<" (Merge conflict) / File currently empty |
 
 ### 3.9 Canvas [id] Page (`src/app/canvas/[id]/page.test.jsx`) — ⚠️ Worker OOM
 
@@ -161,6 +146,14 @@
 ---
 
 ## 4. Failed / Errored Tests — Root Cause Analysis
+
+### 4.0 Canvas Standalone Page — Merge Conflict Error (Feb 13)
+
+| Item | Detail |
+|---|---|
+| **Error** | `Error: Transform failed with 1 error: E:/Projects/PrisMap/src/app/canvas/page.test.jsx:5:0: ERROR: Unexpected "<< "` |
+| **Root Cause** | Unresolved git merge conflict markers (`<<<<<<< HEAD`, `=======`, etc.) were present in the source file. This caused a syntax error in the Vite/esbuild transformer, preventing the suite from running. |
+| **Current Status** | File content was reset to recover from syntax errors. Tests are currently missing and need to be restored. |
 
 ### 4.1 Canvas Standalone Page — Temporal Dead Zone (TDZ)
 
