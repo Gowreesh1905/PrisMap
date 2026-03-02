@@ -229,8 +229,9 @@ export default function useCollaboration(canvasId, user) {
         try {
             await updateDoc(canvasRef, { isPublic: newValue });
             setIsShared(newValue);
+            console.log(`[Collaboration] Canvas sharing ${newValue ? 'ENABLED' : 'DISABLED'}`);
         } catch (error) {
-            console.error('Error toggling share:', error);
+            console.error('[Collaboration] Failed to toggle share:', error.code, error.message);
         }
     }, [canvasId, isShared]);
 
