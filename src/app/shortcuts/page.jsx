@@ -1,117 +1,74 @@
 /**
  * @fileoverview Keyboard Shortcuts Page Component
- * 
- * This page displays all available keyboard shortcuts in PrisMap,
- * organized by category (Global, Canvas, Tools). The page features
- * a glassmorphism design style in day mode (consistent with the login page)
- * and a dark theme in night mode (consistent with the dashboard page).
- * 
+ *
+ * Displays all keyboard shortcuts in PrisMap organized by category.
+ * Users can edit shortcut bindings inline — the new bindings persist
+ * to localStorage and are used by the canvas in real time.
+ *
+ * Day mode: glassmorphism style (login page).
+ * Night mode: dashboard-style dark theme.
+ *
  * @module app/shortcuts/page
- * @requires react
- * @requires next/navigation
- * @requires lucide-react
  */
 
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Keyboard, Command } from "lucide-react";
+import { ArrowLeft, Keyboard, Command, Pencil, X, RotateCcw } from "lucide-react";
+import { useShortcuts } from "@/contexts/ShortcutContext";
 
-/**
- * @typedef {Object} ShortcutItem
- * @property {string[]} keys - Array of key names that form the shortcut combination
- * @property {string} description - Human-readable description of what the shortcut does
- */
+// ─── Dark mode detection ────────────────────────────────────────────
 
-/**
- * @typedef {Object} ShortcutsData
- * @property {ShortcutItem[]} global - Global shortcuts available throughout the app
- * @property {ShortcutItem[]} canvas - Shortcuts specific to canvas operations
- * @property {ShortcutItem[]} tools - Shortcuts for tool selection
- */
-
-/**
- * Keyboard shortcuts data organized by category.
- * Contains all available keyboard shortcuts in PrisMap grouped into
- * global, canvas, and tool selection categories.
- * 
- * @constant {ShortcutsData}
- */
-const shortcuts = {
-    global: [
-        { keys: ["Ctrl", "K"], description: "Open search" },
-        { keys: ["Ctrl", ","], description: "Open settings" },
-        { keys: ["Escape"], description: "Close dialogs / Cancel" },
-    ],
-    canvas: [
-        { keys: ["Ctrl", "Z"], description: "Undo action" },
-        { keys: ["Ctrl", "Y"], description: "Redo action" },
-        { keys: ["Ctrl", "S"], description: "Save canvas" },
-        { keys: ["Delete"], description: "Delete selected element" },
-        { keys: ["Escape"], description: "Deselect / Cancel drawing" },
-    ],
-    tools: [
-        { keys: ["1"], description: "Select tool" },
-        { keys: ["2"], description: "Pen tool" },
-        { keys: ["3"], description: "Eraser tool" },
-        { keys: ["4"], description: "Text tool" },
-        { keys: ["5"], description: "Rectangle shape" },
-        { keys: ["6"], description: "Circle shape" },
-        { keys: ["7"], description: "Triangle shape" },
-        { keys: ["8"], description: "Star shape" },
-        { keys: ["9"], description: "Arrow tool" },
-    ],
-};
-
-/**
- * Custom hook to detect the current theme by observing the .dark class
- * on the document root element. Returns true when dark mode is active.
- * 
- * @function useDarkMode
- * @returns {boolean} Whether dark mode is currently active
- */
 function useDarkMode() {
     const [isDark, setIsDark] = useState(false);
-
     useEffect(() => {
-        // Read the initial state
         setIsDark(document.documentElement.classList.contains("dark"));
-
-        // Watch for changes to the class attribute on <html>
-        const observer = new MutationObserver(() => {
-            setIsDark(document.documentElement.classList.contains("dark"));
-        });
-
-        observer.observe(document.documentElement, {
-            attributes: true,
-            attributeFilter: ["class"],
-        });
-
-        return () => observer.disconnect();
+        const obs = new MutationObserver(() =>
+            setIsDark(document.documentElement.classList.contains("dark"))
+        );
+        obs.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+        return () => obs.disconnect();
     }, []);
-
     return isDark;
 }
 
-/**
- * Keyboard key badge component with theme-aware styling.
- * Renders a single keyboard key in a styled badge format.
- * 
- * @function KeyBadge
- * @param {Object} props - Component props
- * @param {React.ReactNode} props.children - The key text to display inside the badge
- * @param {boolean} props.isDark - Whether dark mode is active
- * @returns {JSX.Element} A styled kbd element representing a keyboard key
- * 
- * @example
- * <KeyBadge isDark={false}>Ctrl</KeyBadge>
- * <KeyBadge isDark={true}>K</KeyBadge>
- */
+// ─── Helpers ────────────────────────────────────────────────────────
+
+/** Convert a combo string like "ctrl+shift+k" to displayable key array ["Ctrl","Shift","K"] */
+function comboToKeys(combo) {
+    return combo.split("+").map((k) => {
+        if (k === "ctrl") return "Ctrl";
+        if (k === "shift") return "Shift";
+        if (k === "alt") return "Alt";
+        if (k === "delete") return "Delete";
+        if (k === "backspace") return "Backspace";
+        if (k === "escape") return "Escape";
+        if (k === "space") return "Space";
+        return k.length === 1 ? k.toUpperCase() : k.charAt(0).toUpperCase() + k.slice(1);
+    });
+}
+
+/** Build a combo string from a keyboard event */
+function eventToCombo(e) {
+    const parts = [];
+    if (e.ctrlKey || e.metaKey) parts.push("ctrl");
+    if (e.shiftKey) parts.push("shift");
+    if (e.altKey) parts.push("alt");
+
+    let key = e.key.toLowerCase();
+    if (key === " ") key = "space";
+    if (key === "control" || key === "meta" || key === "shift" || key === "alt") return null; // modifier-only
+    parts.push(key);
+    return parts.join("+");
+}
+
+// ─── Components ─────────────────────────────────────────────────────
+
 function KeyBadge({ children, isDark }) {
     return (
         <kbd
-            className={`inline-flex items-center justify-center min-w-[32px] h-8 px-2.5 backdrop-blur-sm rounded-lg text-xs font-mono font-semibold shadow-sm ${isDark
+            className={`inline-flex items-center justify-center min-w-[32px] h-8 px-2.5 backdrop-blur-sm rounded-lg text-xs font-mono font-semibold shadow-sm transition-colors ${isDark
                     ? "bg-white/10 border border-white/10 text-slate-200"
                     : "bg-white/60 border border-slate-200/60 text-slate-700"
                 }`}
@@ -121,84 +78,50 @@ function KeyBadge({ children, isDark }) {
     );
 }
 
-/**
- * Shortcut row component that displays a single keyboard shortcut.
- * Shows the description on the left and the key combination on the right.
- * 
- * @function ShortcutRow
- * @param {Object} props - Component props
- * @param {string[]} props.keys - Array of key names in the shortcut combination
- * @param {string} props.description - Description of what the shortcut does
- * @param {boolean} props.isDark - Whether dark mode is active
- * @returns {JSX.Element} A row displaying the shortcut and its description
- * 
- * @example
- * <ShortcutRow keys={["Ctrl", "S"]} description="Save canvas" isDark={false} />
- */
-function ShortcutRow({ keys, description, isDark }) {
+function ShortcutRow({ actionId, combo, description, isDark, onEdit }) {
+    const displayKeys = comboToKeys(combo);
     return (
         <div
-            className={`flex items-center justify-between py-3 border-b last:border-0 ${isDark ? "border-[var(--color-border-ui)]" : "border-slate-200/30"
+            className={`flex items-center justify-between py-3 border-b last:border-0 group ${isDark ? "border-[var(--color-border-ui)]" : "border-slate-200/30"
                 }`}
         >
-            <span
-                className={`text-sm font-medium ${isDark ? "text-slate-400" : "text-slate-600"
-                    }`}
-            >
+            <span className={`text-sm font-medium ${isDark ? "text-slate-400" : "text-slate-600"}`}>
                 {description}
             </span>
-            <div className="flex items-center gap-1.5">
-                {keys.map((key, i) => (
-                    <React.Fragment key={key}>
-                        <KeyBadge isDark={isDark}>{key}</KeyBadge>
-                        {i < keys.length - 1 && (
-                            <span
-                                className={`text-xs font-medium ${isDark ? "text-slate-600" : "text-slate-400"
-                                    }`}
-                            >
-                                +
-                            </span>
-                        )}
-                    </React.Fragment>
-                ))}
+            <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
+                    {displayKeys.map((key, i) => (
+                        <React.Fragment key={`${key}-${i}`}>
+                            <KeyBadge isDark={isDark}>{key}</KeyBadge>
+                            {i < displayKeys.length - 1 && (
+                                <span className={`text-xs font-medium ${isDark ? "text-slate-600" : "text-slate-400"}`}>+</span>
+                            )}
+                        </React.Fragment>
+                    ))}
+                </div>
+                <button
+                    onClick={() => onEdit(actionId)}
+                    className={`p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all ${isDark
+                            ? "hover:bg-white/10 text-slate-400 hover:text-slate-200"
+                            : "hover:bg-slate-100 text-slate-400 hover:text-slate-700"
+                        }`}
+                    title="Edit shortcut"
+                >
+                    <Pencil size={14} />
+                </button>
             </div>
         </div>
     );
 }
 
-/**
- * Shortcut section component with theme-aware card styling.
- * Groups related shortcuts under a titled section with an icon.
- * 
- * @function ShortcutSection
- * @param {Object} props - Component props
- * @param {string} props.title - The section title (e.g., "Global", "Canvas")
- * @param {React.ComponentType<{size: number, className: string}>} props.icon - Lucide icon component
- * @param {ShortcutItem[]} props.items - Array of shortcut items to display
- * @param {string} props.color - Tailwind CSS gradient class for the icon background
- * @param {boolean} props.isDark - Whether dark mode is active
- * @returns {JSX.Element} A section card containing grouped shortcuts
- * 
- * @example
- * <ShortcutSection
- *   title="Global"
- *   icon={Command}
- *   items={shortcuts.global}
- *   color="bg-gradient-to-br from-teal-500 to-emerald-600"
- *   isDark={false}
- * />
- */
-function ShortcutSection({ title, icon: Icon, items, color, isDark }) {
+function ShortcutSection({ title, icon: Icon, items, color, isDark, onEdit }) {
     return (
         <div className="mb-6">
             <div className="flex items-center gap-2 mb-3">
                 <div className={`p-1.5 ${color} rounded-lg`}>
                     <Icon size={14} className="text-white" />
                 </div>
-                <h3
-                    className={`text-sm font-bold uppercase tracking-wider ${isDark ? "text-slate-200" : "text-slate-700"
-                        }`}
-                >
+                <h3 className={`text-sm font-bold uppercase tracking-wider ${isDark ? "text-slate-200" : "text-slate-700"}`}>
                     {title}
                 </h3>
             </div>
@@ -208,12 +131,14 @@ function ShortcutSection({ title, icon: Icon, items, color, isDark }) {
                         : "bg-white/60 backdrop-blur-xl border border-white/50 shadow-indigo-500/5"
                     }`}
             >
-                {items.map((item) => (
+                {items.map(([actionId, s]) => (
                     <ShortcutRow
-                        key={item.description}
-                        keys={item.keys}
-                        description={item.description}
+                        key={actionId}
+                        actionId={actionId}
+                        combo={s.combo}
+                        description={s.description}
                         isDark={isDark}
+                        onEdit={onEdit}
                     />
                 ))}
             </div>
@@ -221,31 +146,149 @@ function ShortcutSection({ title, icon: Icon, items, color, isDark }) {
     );
 }
 
-/**
- * Keyboard Shortcuts Page Component.
- * 
- * Main page component that displays all available keyboard shortcuts in PrisMap.
- * Features two visual modes:
- * - Day mode: Glassmorphism design style consistent with the login page
- * - Night mode: Dashboard-style dark theme with CSS custom properties
- * 
- * @function ShortcutsPage
- * @returns {JSX.Element} The complete keyboard shortcuts page
- * 
- * @example
- * // This is a Next.js page component, accessed via /shortcuts route
- * // No direct usage required - automatically rendered by Next.js routing
- */
+// ─── Key Recorder Modal ─────────────────────────────────────────────
+
+function KeyRecorderModal({ actionId, description, isDark, onSave, onCancel, currentCombo }) {
+    const [captured, setCaptured] = useState(null);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        const handler = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const combo = eventToCombo(e);
+            if (combo) {
+                setCaptured(combo);
+                setError(null);
+            }
+        };
+        window.addEventListener("keydown", handler, true);
+        return () => window.removeEventListener("keydown", handler, true);
+    }, []);
+
+    const handleSave = () => {
+        if (!captured) return;
+        const result = onSave(actionId, captured);
+        if (!result.success) {
+            setError(`Conflict: already used by "${result.conflict}"`);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div
+                className={`w-full max-w-sm rounded-2xl p-6 shadow-2xl border ${isDark
+                        ? "bg-[var(--color-card)] border-[var(--color-border-ui)]"
+                        : "bg-white border-slate-200"
+                    }`}
+            >
+                {/* Header */}
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className={`text-lg font-bold ${isDark ? "text-[var(--color-text-main)]" : "text-slate-800"}`}>
+                        Edit Shortcut
+                    </h3>
+                    <button
+                        onClick={onCancel}
+                        className={`p-1.5 rounded-lg transition-colors ${isDark ? "hover:bg-white/10 text-slate-400" : "hover:bg-slate-100 text-slate-500"
+                            }`}
+                    >
+                        <X size={18} />
+                    </button>
+                </div>
+
+                {/* Action label */}
+                <p className={`text-sm mb-4 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                    Recording new key for: <strong className={isDark ? "text-slate-200" : "text-slate-700"}>{description}</strong>
+                </p>
+
+                {/* Recorder area */}
+                <div
+                    className={`flex items-center justify-center h-20 rounded-xl border-2 border-dashed mb-4 ${isDark
+                            ? "border-purple-500/40 bg-purple-500/5"
+                            : "border-indigo-300 bg-indigo-50/50"
+                        }`}
+                >
+                    {captured ? (
+                        <div className="flex items-center gap-1.5">
+                            {comboToKeys(captured).map((k, i) => (
+                                <React.Fragment key={`${k}-${i}`}>
+                                    <KeyBadge isDark={isDark}>{k}</KeyBadge>
+                                    {i < comboToKeys(captured).length - 1 && (
+                                        <span className={`text-xs font-medium ${isDark ? "text-slate-500" : "text-slate-400"}`}>+</span>
+                                    )}
+                                </React.Fragment>
+                            ))}
+                        </div>
+                    ) : (
+                        <span className={`text-sm font-medium animate-pulse ${isDark ? "text-purple-400" : "text-indigo-500"}`}>
+                            Press any key combination…
+                        </span>
+                    )}
+                </div>
+
+                {/* Error */}
+                {error && (
+                    <p className="text-xs text-red-500 font-medium mb-3">{error}</p>
+                )}
+
+                {/* Buttons */}
+                <div className="flex gap-3">
+                    <button
+                        onClick={onCancel}
+                        className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors ${isDark
+                                ? "bg-white/5 text-slate-400 hover:bg-white/10"
+                                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                            }`}
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        onClick={handleSave}
+                        disabled={!captured}
+                        className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${captured
+                                ? "bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-lg shadow-purple-500/25 hover:shadow-purple-500/40 hover:-translate-y-0.5"
+                                : isDark
+                                    ? "bg-white/5 text-slate-600 cursor-not-allowed"
+                                    : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                            }`}
+                    >
+                        Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ─── Main Page ──────────────────────────────────────────────────────
+
 export default function ShortcutsPage() {
     const router = useRouter();
     const isDark = useDarkMode();
+    const { shortcuts, updateShortcut, resetToDefaults } = useShortcuts();
+    const [editingAction, setEditingAction] = useState(null);
+
+    // Group shortcuts by category
+    const canvasShortcuts = Object.entries(shortcuts).filter(([, s]) => s.category === "canvas");
+    const toolShortcuts = Object.entries(shortcuts).filter(([, s]) => s.category === "tools");
+
+    const handleSave = useCallback(
+        (actionId, newCombo) => {
+            const result = updateShortcut(actionId, newCombo);
+            if (result.success) {
+                setEditingAction(null);
+            }
+            return result;
+        },
+        [updateShortcut]
+    );
 
     return (
         <div
             className={`relative min-h-screen overflow-hidden transition-colors duration-300 ${isDark ? "bg-[var(--color-bg-base)]" : "bg-slate-50"
                 }`}
         >
-            {/* Light Mode: Glassmorphism Background Blobs (login-page style) */}
+            {/* Light mode: glassmorphism blobs */}
             {!isDark && (
                 <>
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] bg-indigo-500/30 rounded-full blur-[100px] mix-blend-multiply animate-pulse" />
@@ -254,7 +297,7 @@ export default function ShortcutsPage() {
                 </>
             )}
 
-            {/* Dark Mode: Dashboard-style decorative gradient blurs */}
+            {/* Dark mode: subtle gradient blurs */}
             {isDark && (
                 <div className="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden="true">
                     <div className="absolute top-[-10%] left-[-10%] h-[500px] w-[500px] rounded-full bg-purple-600/10 blur-[120px]" />
@@ -274,20 +317,14 @@ export default function ShortcutsPage() {
                             }`}
                         aria-label="Go back"
                     >
-                        <ArrowLeft
-                            size={20}
-                            className={isDark ? "text-slate-300" : "text-slate-600"}
-                        />
+                        <ArrowLeft size={20} className={isDark ? "text-slate-300" : "text-slate-600"} />
                     </button>
                     <div>
-                        <h1
-                            className={`text-2xl font-extrabold tracking-tight ${isDark ? "text-[var(--color-text-main)]" : "text-slate-800"
-                                }`}
-                        >
+                        <h1 className={`text-2xl font-extrabold tracking-tight ${isDark ? "text-[var(--color-text-main)]" : "text-slate-800"}`}>
                             Keyboard Shortcuts
                         </h1>
                         <p className="text-sm text-slate-500 font-medium mt-0.5">
-                            Quick access to all features
+                            Click the pencil icon to customize any shortcut
                         </p>
                     </div>
                 </div>
@@ -309,27 +346,22 @@ export default function ShortcutsPage() {
                     {/* Divider */}
                     <div className="w-20 h-1 bg-gradient-to-r from-indigo-500/30 to-purple-500/30 rounded-full mx-auto mb-8" />
 
-                    {/* Shortcuts Sections */}
-                    <ShortcutSection
-                        title="Global"
-                        icon={Command}
-                        items={shortcuts.global}
-                        color="bg-gradient-to-br from-teal-500 to-emerald-600"
-                        isDark={isDark}
-                    />
+                    {/* Sections */}
                     <ShortcutSection
                         title="Canvas"
                         icon={Keyboard}
-                        items={shortcuts.canvas}
+                        items={canvasShortcuts}
                         color="bg-gradient-to-br from-indigo-500 to-blue-600"
                         isDark={isDark}
+                        onEdit={setEditingAction}
                     />
                     <ShortcutSection
                         title="Tool Selection"
                         icon={Command}
-                        items={shortcuts.tools}
+                        items={toolShortcuts}
                         color="bg-gradient-to-br from-purple-500 to-pink-600"
                         isDark={isDark}
+                        onEdit={setEditingAction}
                     />
 
                     {/* Tip Box */}
@@ -339,27 +371,42 @@ export default function ShortcutsPage() {
                                 : "bg-gradient-to-r from-indigo-50/80 to-purple-50/80 backdrop-blur-sm border border-indigo-200/50"
                             }`}
                     >
-                        <p
-                            className={`text-sm font-medium ${isDark ? "text-purple-300" : "text-indigo-700"
-                                }`}
-                        >
-                            <span className="font-bold">💡 Pro Tip:</span> Press{" "}
-                            <KeyBadge isDark={isDark}>Ctrl</KeyBadge>
-                            <span className="mx-1">+</span>
-                            <KeyBadge isDark={isDark}>,</KeyBadge>
-                            {" "}from anywhere to quickly access settings.
+                        <p className={`text-sm font-medium ${isDark ? "text-purple-300" : "text-indigo-700"}`}>
+                            <span className="font-bold">💡 Tip:</span> Hover over any shortcut and click the{" "}
+                            <Pencil size={12} className="inline -mt-0.5" /> icon to rebind it.
                         </p>
                     </div>
+
+                    {/* Reset to defaults */}
+                    <button
+                        onClick={resetToDefaults}
+                        className={`mt-4 w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all ${isDark
+                                ? "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+                                : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+                            }`}
+                    >
+                        <RotateCcw size={14} />
+                        Reset All to Defaults
+                    </button>
                 </div>
 
                 {/* Footer */}
-                <div
-                    className={`text-center mt-8 text-xs font-medium tracking-wide ${isDark ? "text-slate-600" : "text-slate-400"
-                        }`}
-                >
+                <div className={`text-center mt-8 text-xs font-medium tracking-wide ${isDark ? "text-slate-600" : "text-slate-400"}`}>
                     PRISMAP KEYBOARD SHORTCUTS
                 </div>
             </div>
+
+            {/* Key Recorder Modal */}
+            {editingAction && (
+                <KeyRecorderModal
+                    actionId={editingAction}
+                    description={shortcuts[editingAction]?.description}
+                    currentCombo={shortcuts[editingAction]?.combo}
+                    isDark={isDark}
+                    onSave={handleSave}
+                    onCancel={() => setEditingAction(null)}
+                />
+            )}
         </div>
     );
 }
