@@ -44,27 +44,58 @@ export default function Dashboard() {
 
     /**
      * Real-time Firestore project listener.
-     * Queries the 'canvases' collection filtered by the current user's UID.
-     * * @param {string} user.uid - The current user's identifier.
-     * @returns {import("firebase/firestore").Unsubscribe} Cleanup function.
+     * Two queries: (1) canvases owned by user, (2) canvases shared with user.
+     * Results are merged and deduplicated.
      */
-    const q = query(
+    const ownedQuery = query(
       collection(db, "canvases"),
       where("ownerId", "==", user.uid),
       orderBy("createdAt", "desc")
     );
 
-    const unsubscribeProjects = onSnapshot(q, (snap) => {
-      setProjects(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    const sharedQuery = query(
+      collection(db, "canvases"),
+      where("collaborators", "array-contains", user.uid)
+    );
+
+    let ownedProjects = [];
+    let sharedProjects = [];
+
+    const mergeProjects = () => {
+      // Merge and deduplicate (a canvas could match both queries)
+      const allProjects = [...ownedProjects];
+      const ownedIds = new Set(ownedProjects.map(p => p.id));
+      sharedProjects.forEach(p => {
+        if (!ownedIds.has(p.id)) {
+          allProjects.push({ ...p, _isShared: true });
+        }
+      });
+      setProjects(allProjects);
       setLoading(false);
+    };
+
+    const unsubOwned = onSnapshot(ownedQuery, (snap) => {
+      ownedProjects = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      mergeProjects();
     }, (error) => {
-      // Ignore permission errors that happen during logout/auth persistence changes
       if (error.code !== "permission-denied") {
-        console.error("Error fetching projects:", error);
+        console.error("Error fetching owned projects:", error);
       }
     });
 
-    return () => unsubscribeProjects();
+    const unsubShared = onSnapshot(sharedQuery, (snap) => {
+      sharedProjects = snap.docs.map(doc => ({ id: doc.id, ...doc.data(), _isShared: true }));
+      mergeProjects();
+    }, (error) => {
+      if (error.code !== "permission-denied") {
+        console.error("Error fetching shared projects:", error);
+      }
+    });
+
+    return () => {
+      unsubOwned();
+      unsubShared();
+    };
   }, [user]);
 
   // Check Profile Completion Status
@@ -146,6 +177,7 @@ export default function Dashboard() {
               title={project.title}
               date={project.createdAt?.toDate()}
               id={project.id}
+              isShared={project._isShared}
             />
           ))}
         </section>
@@ -232,7 +264,7 @@ export default function Dashboard() {
  * @param {ProjectCardProps} props - Component properties.
  * @returns {React.JSX.Element} The rendered project card.
  */
-function ProjectCard({ title, date, id }) {
+function ProjectCard({ title, date, id, isShared }) {
   const router = useRouter();
 
   return (
@@ -241,10 +273,16 @@ function ProjectCard({ title, date, id }) {
       className="group aspect-[4/5] cursor-pointer flex flex-col rounded-3xl bg-[var(--color-card)] ring-1 ring-[var(--color-border-ui)] hover:-translate-y-1 transition-all duration-300 hover:shadow-2xl hover:shadow-purple-500/15"
     >
       {/* 75% Preview Section with Abstract Grid Background */}
-      <div className="h-[75%] bg-slate-900/40 rounded-t-3xl flex items-center justify-center p-4">
+      <div className="h-[75%] bg-slate-900/40 rounded-t-3xl flex items-center justify-center p-4 relative">
         <div className="h-full w-full rounded-xl border border-[var(--color-border-ui)] flex items-center justify-center bg-[radial-gradient(var(--color-border-ui)_1px,transparent_1px)] [background-size:14px_14px]">
           <Layout className="text-slate-700 group-hover:text-purple-400 transition-colors" size={32} />
         </div>
+        {/* Shared badge */}
+        {isShared && (
+          <span className="absolute top-3 right-3 px-2 py-0.5 bg-blue-500/20 text-blue-400 text-[10px] font-bold uppercase tracking-wider rounded-full backdrop-blur-sm border border-blue-500/20">
+            Shared
+          </span>
+        )}
       </div>
 
       {/* 25% Information Section */}
