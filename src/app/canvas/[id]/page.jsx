@@ -199,15 +199,29 @@ export default function CanvasPage() {
         setSaving(true);
         try {
             const docRef = doc(db, 'canvases', canvasId);
-            await setDoc(docRef, {
-                id: canvasId,
-                title: titleToSave || canvasTitle,
-                elements: elementsToSave || elements,
-                ownerId: user.uid,
-                _lastModifiedBy: user.uid,  // So onSnapshot can skip our own saves
-                updatedAt: serverTimestamp(),
-                createdAt: serverTimestamp()
-            }, { merge: true });
+            const docSnap = await getDoc(docRef);
+
+            if (docSnap.exists()) {
+                // Existing canvas — update only the fields we need
+                // Do NOT overwrite ownerId (would break permissions for collaborators)
+                await setDoc(docRef, {
+                    title: titleToSave || canvasTitle,
+                    elements: elementsToSave || elements,
+                    _lastModifiedBy: user.uid,
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+            } else {
+                // New canvas — set all fields including ownerId
+                await setDoc(docRef, {
+                    id: canvasId,
+                    title: titleToSave || canvasTitle,
+                    elements: elementsToSave || elements,
+                    ownerId: user.uid,
+                    _lastModifiedBy: user.uid,
+                    updatedAt: serverTimestamp(),
+                    createdAt: serverTimestamp()
+                });
+            }
 
             setLastSaved(new Date());
             console.log('Canvas saved successfully');
