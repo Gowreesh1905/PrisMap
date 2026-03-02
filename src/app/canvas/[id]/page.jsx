@@ -105,6 +105,7 @@ export default function CanvasPage() {
     const [rightPanelTab, setRightPanelTab] = useState('design'); // 'design' | 'layers' | 'export'
     const transformerRef = useRef(null);
     const [showSharePanel, setShowSharePanel] = useState(false);
+    const [accessDenied, setAccessDenied] = useState(false);
 
     // Font settings for text elements
     const [fontFamily, setFontFamily] = useState('Arial');
@@ -153,6 +154,18 @@ export default function CanvasPage() {
             // On first load, always apply the data
             if (isFirstLoad.current) {
                 isFirstLoad.current = false;
+
+                // Access control: check if user is allowed
+                const isOwner = data.ownerId === user.uid;
+                const isCollaborator = (data.collaborators || []).includes(user.uid);
+                const isPublicCanvas = data.isPublic === true;
+
+                if (!isOwner && !isCollaborator && !isPublicCanvas) {
+                    setAccessDenied(true);
+                    setLoading(false);
+                    return;
+                }
+
                 setCanvasTitle(data.title || 'Untitled');
                 setElements(data.elements || []);
                 setHistory([data.elements || []]);
@@ -1438,6 +1451,28 @@ export default function CanvasPage() {
         return (
             <div className="flex h-screen w-full items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
                 <div className="animate-spin rounded-full h-12 w-12 border-4 border-purple-600 border-t-transparent"></div>
+            </div>
+        );
+    }
+
+    if (accessDenied) {
+        return (
+            <div className="flex h-screen w-full items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
+                <div className="text-center p-8 bg-white rounded-2xl shadow-lg border border-gray-200 max-w-md">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-50 flex items-center justify-center">
+                        <Lock size={28} className="text-red-500" />
+                    </div>
+                    <h2 className="text-xl font-bold text-gray-900 mb-2">Access Denied</h2>
+                    <p className="text-gray-500 text-sm mb-6">
+                        You don&apos;t have permission to view this canvas. Ask the owner to share it with you.
+                    </p>
+                    <button
+                        onClick={() => router.push('/dashboard')}
+                        className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold text-sm rounded-xl hover:from-purple-700 hover:to-indigo-700 shadow-md shadow-purple-500/20 transition-all"
+                    >
+                        ← Back to Dashboard
+                    </button>
+                </div>
             </div>
         );
     }
