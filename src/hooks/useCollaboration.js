@@ -1,16 +1,18 @@
 /**
  * @fileoverview Custom hook for real-time canvas collaboration.
  * 
- * Handles:
- * - User presence (join/leave room)
- * - Live cursor position broadcasting (throttled)
- * - Active users tracking via Firestore onSnapshot
- * - Canvas sharing controls (public/private toggle)
+ * Design decisions:
+ * - Presence docs are CREATED when a user joins, DELETED when they leave.
+ *   Only currently-online users have docs. No ghost data accumulates.
+ * - The `collaborators` array (for restricted access) lives on the canvas
+ *   document itself, NOT in the presence subcollection.
+ * - `lastSeen` is only used to detect crashed browsers (heartbeat stops →
+ *   ghost doc gets auto-deleted after 45s).
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-    doc, collection, query, where,
+    doc, collection,
     onSnapshot, setDoc, updateDoc, deleteDoc,
     serverTimestamp
 } from 'firebase/firestore';
@@ -28,7 +30,6 @@ function generateUserColor(uid) {
     for (let i = 0; i < uid.length; i++) {
         hash = uid.charCodeAt(i) + ((hash << 5) - hash);
     }
-    // Use hue 0-360, keep saturation and lightness fixed for vibrant readable colors
     const hue = ((hash % 360) + 360) % 360;
     return `hsl(${hue}, 70%, 50%)`;
 }
@@ -36,8 +37,15 @@ function generateUserColor(uid) {
 /** How often (ms) we write cursor position to Firestore */
 const CURSOR_THROTTLE_MS = 100;
 
-/** After this many ms without activity, a user is considered stale */
-const STALE_PRESENCE_MS = 30000;
+/** How often (ms) we ping Firestore to say "I'm still here" (even when idle) */
+const HEARTBEAT_INTERVAL_MS = 15000;
+
+/**
+ * If a user's lastSeen is older than this, their browser probably crashed.
+ * Their presence doc gets auto-deleted.
+ * Must be > HEARTBEAT_INTERVAL_MS so normal idle users aren't removed.
+ */
+const STALE_TIMEOUT_MS = 45000;
 
 /**
  * useCollaboration — real-time collaboration hook for PrisMap canvas.
@@ -46,8 +54,8 @@ const STALE_PRESENCE_MS = 30000;
  * @param {object|null} user - Firebase Auth user object ({ uid, displayName, photoURL })
  * 
  * @returns {{
- *   activeUsers: Array<{uid: string, displayName: string, photoURL: string|null, color: string}>,
- *   remoteCursors: Array<{uid: string, name: string, color: string, x: number, y: number}>,
+ *   activeUsers: Array<{uid, displayName, photoURL, color}>,
+ *   remoteCursors: Array<{uid, name, color, x, y}>,
  *   updateCursorPosition: (x: number, y: number) => void,
  *   isShared: boolean,
  *   toggleShare: () => Promise<void>,
@@ -59,15 +67,14 @@ export default function useCollaboration(canvasId, user) {
     const [remoteCursors, setRemoteCursors] = useState([]);
     const [isShared, setIsShared] = useState(false);
 
-    // Refs for throttling and cleanup
     const lastCursorUpdate = useRef(0);
     const presenceRef = useRef(null);
 
-    // Generate a stable color for the current user
     const myColor = user ? generateUserColor(user.uid) : '#888888';
 
     // ─────────────────────────────────────────────
-    // 1. JOIN ROOM — create presence doc on mount
+    // 1. JOIN ROOM — create presence doc on mount,
+    //    DELETE it on leave (not just mark inactive)
     // ─────────────────────────────────────────────
     useEffect(() => {
         if (!canvasId || !user) return;
@@ -75,52 +82,60 @@ export default function useCollaboration(canvasId, user) {
         const pRef = doc(db, 'canvases', canvasId, 'presence', user.uid);
         presenceRef.current = pRef;
 
-        // Create/update our presence document
+        // Create presence doc — this tells everyone "I'm here"
         setDoc(pRef, {
             uid: user.uid,
             displayName: user.displayName || user.email || 'Anonymous',
             photoURL: user.photoURL || null,
             color: myColor,
             cursor: { x: 0, y: 0 },
-            lastSeen: serverTimestamp(),
-            isActive: true
-        }, { merge: true });
+            lastSeen: serverTimestamp()
+        });
 
-        // LEAVE ROOM — mark inactive on unmount
+        // LEAVE: delete the doc entirely — no leftover data
         const cleanup = () => {
-            updateDoc(pRef, {
-                isActive: false,
-                lastSeen: serverTimestamp()
-            }).catch(() => {
-                // Ignore errors during unmount (e.g., component already gone)
-            });
+            deleteDoc(pRef).catch(() => { });
         };
 
-        // Handle browser tab close / navigate away
-        const handleBeforeUnload = () => {
-            // updateDoc may not complete during unload, but we try
-            updateDoc(pRef, { isActive: false }).catch(() => { });
-        };
-        window.addEventListener('beforeunload', handleBeforeUnload);
+        // Handle normal tab close
+        window.addEventListener('beforeunload', cleanup);
 
         return () => {
-            window.removeEventListener('beforeunload', handleBeforeUnload);
+            window.removeEventListener('beforeunload', cleanup);
             cleanup();
         };
     }, [canvasId, user, myColor]);
 
     // ─────────────────────────────────────────────
-    // 2. LISTEN TO ACTIVE USERS — onSnapshot on presence subcollection
+    // 2. HEARTBEAT — ping every 15s so crash detection works.
+    //    If the browser crashes, this stops → lastSeen goes stale
+    //    → other clients auto-delete the ghost doc.
+    // ─────────────────────────────────────────────
+    useEffect(() => {
+        if (!presenceRef.current) return;
+
+        const interval = setInterval(() => {
+            updateDoc(presenceRef.current, {
+                lastSeen: serverTimestamp()
+            }).catch(() => { });
+        }, HEARTBEAT_INTERVAL_MS);
+
+        return () => clearInterval(interval);
+    }, [canvasId, user]);
+
+    // ─────────────────────────────────────────────
+    // 3. LISTEN TO ACTIVE USERS — onSnapshot on presence subcollection.
+    //    Every doc that exists = an active user.
+    //    Stale docs (crashed browsers) get auto-deleted.
     // ─────────────────────────────────────────────
     useEffect(() => {
         if (!canvasId || !user) return;
 
-        const presenceQuery = query(
-            collection(db, 'canvases', canvasId, 'presence'),
-            where('isActive', '==', true)
-        );
+        // Listen to ALL docs in the presence subcollection
+        // (every doc = a currently-online user)
+        const presenceCol = collection(db, 'canvases', canvasId, 'presence');
 
-        const unsubscribe = onSnapshot(presenceQuery, (snapshot) => {
+        const unsubscribe = onSnapshot(presenceCol, (snapshot) => {
             const now = Date.now();
             const users = [];
             const cursors = [];
@@ -128,12 +143,11 @@ export default function useCollaboration(canvasId, user) {
             snapshot.docs.forEach((docSnap) => {
                 const data = docSnap.data();
 
-                // Skip stale presence docs (user closed tab without cleanup)
+                // Crash detection: if lastSeen is too old, delete the ghost doc
                 const lastSeen = data.lastSeen?.toMillis?.() || 0;
-                if (now - lastSeen > STALE_PRESENCE_MS && lastSeen !== 0) {
-                    // Clean up stale doc silently
-                    updateDoc(docSnap.ref, { isActive: false }).catch(() => { });
-                    return;
+                if (lastSeen !== 0 && now - lastSeen > STALE_TIMEOUT_MS) {
+                    deleteDoc(docSnap.ref).catch(() => { });
+                    return; // skip this ghost
                 }
 
                 users.push({
@@ -143,7 +157,7 @@ export default function useCollaboration(canvasId, user) {
                     color: data.color || '#888888'
                 });
 
-                // Only include remote users' cursors (not our own)
+                // Remote cursors: exclude our own
                 if (data.uid !== user.uid) {
                     cursors.push({
                         uid: data.uid,
@@ -158,7 +172,6 @@ export default function useCollaboration(canvasId, user) {
             setActiveUsers(users);
             setRemoteCursors(cursors);
         }, (error) => {
-            // Ignore permission errors during logout
             if (error.code !== 'permission-denied') {
                 console.error('Presence listener error:', error);
             }
@@ -168,7 +181,7 @@ export default function useCollaboration(canvasId, user) {
     }, [canvasId, user]);
 
     // ─────────────────────────────────────────────
-    // 3. LISTEN TO SHARE STATUS — read isPublic from canvas doc
+    // 4. SHARE STATUS — read isPublic from canvas doc
     // ─────────────────────────────────────────────
     useEffect(() => {
         if (!canvasId) return;
@@ -188,7 +201,7 @@ export default function useCollaboration(canvasId, user) {
     }, [canvasId]);
 
     // ─────────────────────────────────────────────
-    // 4. BROADCAST CURSOR — throttled writes
+    // 5. BROADCAST CURSOR — throttled to 100ms
     // ─────────────────────────────────────────────
     const updateCursorPosition = useCallback((x, y) => {
         if (!presenceRef.current) return;
@@ -200,13 +213,13 @@ export default function useCollaboration(canvasId, user) {
         updateDoc(presenceRef.current, {
             cursor: { x: Math.round(x), y: Math.round(y) },
             lastSeen: serverTimestamp()
-        }).catch(() => {
-            // Ignore write errors (e.g., if doc was deleted)
-        });
+        }).catch(() => { });
     }, []);
 
     // ─────────────────────────────────────────────
-    // 5. SHARE CONTROLS — toggle public/private
+    // 6. SHARE CONTROLS — toggle public/private
+    //    Collaborators list (for restricted access) is
+    //    managed on the canvas doc, not here.
     // ─────────────────────────────────────────────
     const toggleShare = useCallback(async () => {
         if (!canvasId) return;
