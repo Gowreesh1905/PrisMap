@@ -139,6 +139,7 @@ export default function CanvasPage() {
      * Skips updates from the local user (_lastModifiedBy check) to prevent echo.
      */
     const isFirstLoad = useRef(true);
+    const canvasOwnerRef = useRef(null);  // tracks who the real owner is
     useEffect(() => {
         if (!user || !canvasId) return;
 
@@ -160,6 +161,17 @@ export default function CanvasPage() {
                 const isCollaborator = (data.collaborators || []).includes(user.uid);
                 const isPublicCanvas = data.isPublic === true;
 
+                console.log('[Access Control]', {
+                    myUid: user.uid,
+                    docOwnerId: data.ownerId,
+                    isPublicField: data.isPublic,
+                    collaborators: data.collaborators,
+                    isOwner,
+                    isCollaborator,
+                    isPublicCanvas,
+                    allData: data
+                });
+
                 if (!isOwner && !isCollaborator && !isPublicCanvas) {
                     setAccessDenied(true);
                     setLoading(false);
@@ -170,6 +182,7 @@ export default function CanvasPage() {
                 setElements(data.elements || []);
                 setHistory([data.elements || []]);
                 setHistoryStep(0);
+                canvasOwnerRef.current = data.ownerId || null;
                 setLoading(false);
                 return;
             }
@@ -181,9 +194,7 @@ export default function CanvasPage() {
             setCanvasTitle(data.title || 'Untitled');
             setElements(data.elements || []);
         }, (error) => {
-            if (error.code !== 'permission-denied') {
-                console.error('Error loading canvas:', error);
-            }
+            console.error('[Collaboration] Canvas listener error:', error.code, error.message);
             setLoading(false);
         });
 
@@ -199,34 +210,28 @@ export default function CanvasPage() {
         setSaving(true);
         try {
             const docRef = doc(db, 'canvases', canvasId);
-            const docSnap = await getDoc(docRef);
 
-            if (docSnap.exists()) {
-                // Existing canvas — update only the fields we need
-                // Do NOT overwrite ownerId (would break permissions for collaborators)
-                await setDoc(docRef, {
-                    title: titleToSave || canvasTitle,
-                    elements: elementsToSave || elements,
-                    _lastModifiedBy: user.uid,
-                    updatedAt: serverTimestamp()
-                }, { merge: true });
-            } else {
-                // New canvas — set all fields including ownerId
-                await setDoc(docRef, {
-                    id: canvasId,
-                    title: titleToSave || canvasTitle,
-                    elements: elementsToSave || elements,
-                    ownerId: user.uid,
-                    _lastModifiedBy: user.uid,
-                    updatedAt: serverTimestamp(),
-                    createdAt: serverTimestamp()
-                });
+            // Build save data — never overwrite ownerId for collaborators
+            const saveData = {
+                id: canvasId,
+                title: titleToSave || canvasTitle,
+                elements: elementsToSave || elements,
+                _lastModifiedBy: user.uid,
+                updatedAt: serverTimestamp()
+            };
+
+            // Only set ownerId + createdAt if we are the owner (or it's a brand new canvas)
+            if (!canvasOwnerRef.current || canvasOwnerRef.current === user.uid) {
+                saveData.ownerId = user.uid;
+                saveData.createdAt = serverTimestamp();
             }
+
+            await setDoc(docRef, saveData, { merge: true });
 
             setLastSaved(new Date());
             console.log('Canvas saved successfully');
         } catch (error) {
-            console.error('Error saving canvas:', error);
+            console.error('[Collaboration] Save error:', error.code, error.message);
         } finally {
             setSaving(false);
         }
