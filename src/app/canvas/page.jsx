@@ -99,6 +99,16 @@ export default function CanvasPage() {
     }, [history, historyStep]);
 
     /**
+     * Delete selected element
+     */
+    const deleteSelected = useCallback(() => {
+        if (!selectedId) return;
+        const newElements = elements.filter(el => el.id !== selectedId);
+        saveToHistory(newElements);
+        setSelectedId(null);
+    }, [selectedId, elements, saveToHistory]);
+
+    /**
      * Keyboard shortcuts - using capture phase to override browser defaults
      */
     useEffect(() => {
@@ -436,15 +446,7 @@ export default function CanvasPage() {
         saveToHistory([]);  // This will call setElements([]) internally
     };
 
-    /**
-     * Delete selected element
-     */
-    const deleteSelected = () => {
-        if (!selectedId) return;
-        const newElements = elements.filter(el => el.id !== selectedId);
-        saveToHistory(newElements);
-        setSelectedId(null);
-    };
+    // deleteSelected is now defined above useEffect (line ~101) as useCallback
 
     /**
      * Handle text double click

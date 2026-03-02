@@ -19,6 +19,7 @@ import { onAuthStateChanged } from 'firebase/auth'
  * Tests below are SKIPPED until the source code is fixed.
  * All tests are documented for integration coverage tracking.
  */
+import CanvasPage from './page'
 
 describe('Canvas Standalone Page Integration Tests', () => {
     const mockPush = vi.fn();
@@ -33,66 +34,100 @@ describe('Canvas Standalone Page Integration Tests', () => {
         });
     });
 
-    // --- SKIPPED TESTS (Temporal Dead Zone in source code) ---
-    // All tests document expected behavior for when the source is fixed.
-
-    it.skip('redirects to login if user is not authenticated', () => {
-        // Expected: when onAuthStateChanged returns null, router.push('/') is called
+    it('redirects to login if user is not authenticated', () => {
+        onAuthStateChanged.mockImplementation((auth, callback) => {
+            callback(null);
+            return () => { };
+        });
+        render(<CanvasPage />);
+        expect(mockPush).toHaveBeenCalledWith('/');
     });
 
-    it.skip('renders the Infinite Canvas header text', () => {
-        // Expected: screen.getByText('Infinite Canvas') is in document
+    it('renders the Infinite Canvas header text', () => {
+        render(<CanvasPage />);
+        expect(screen.getAllByText('Infinite Canvas')[0]).toBeInTheDocument();
     });
 
-    it.skip('renders the PrisMap brand text', () => {
-        // Expected: screen.getByText('Pris') is in document
+    it('renders the PrisMap brand text', () => {
+        render(<CanvasPage />);
+        expect(screen.getByText('Map')).toBeInTheDocument();
     });
 
-    it.skip('renders the tool palette with core tools (Select, Pen, Eraser, Text)', () => {
-        // Expected: all 4 tool labels visible
+    it('renders the tool palette with core tools (Select, Pen, Eraser, Text)', () => {
+        render(<CanvasPage />);
+        expect(screen.getByText('Select')).toBeInTheDocument();
+        expect(screen.getByText('Pen')).toBeInTheDocument();
+        expect(screen.getByText('Eraser')).toBeInTheDocument();
+        expect(screen.getByText('Text')).toBeInTheDocument();
     });
 
-    it.skip('renders shape tools (Rectangle, Circle, Triangle, Star, Arrow, Line, Hexagon, Pentagon)', () => {
-        // Expected: all 8 shape labels visible
+    it('renders shape tools (Rectangle, Circle, Triangle, Star, Arrow, Line, Hexagon, Pentagon)', () => {
+        render(<CanvasPage />);
+        expect(screen.getByText('Rectangle')).toBeInTheDocument();
+        expect(screen.getByText('Circle')).toBeInTheDocument();
+        expect(screen.getByText('Triangle')).toBeInTheDocument();
+        expect(screen.getByText('Star')).toBeInTheDocument();
+        expect(screen.getByText('Arrow')).toBeInTheDocument();
+        expect(screen.getByText('Line')).toBeInTheDocument();
+        expect(screen.getByText('Hexagon')).toBeInTheDocument();
+        expect(screen.getByText('Pentagon')).toBeInTheDocument();
     });
 
-    it.skip('renders undo and redo buttons', () => {
-        // Expected: getByTitle('Undo (Ctrl+Z)') and getByTitle('Redo (Ctrl+Y)')
+    it('renders undo and redo buttons', () => {
+        render(<CanvasPage />);
+        expect(screen.getByTitle('Undo (Ctrl+Z)')).toBeInTheDocument();
+        expect(screen.getByTitle('Redo (Ctrl+Y)')).toBeInTheDocument();
     });
 
-    it.skip('undo is disabled initially (no history)', () => {
-        // Expected: undo button is disabled
+    it('undo is disabled initially (no history)', () => {
+        render(<CanvasPage />);
+        const undoBtn = screen.getByTitle('Undo (Ctrl+Z)');
+        expect(undoBtn).toBeDisabled();
     });
 
-    it.skip('renders zoom controls (Zoom In, Zoom Out, Reset)', () => {
-        // Expected: all three zoom buttons visible
+    it('renders zoom controls (Zoom In, Zoom Out, Reset)', () => {
+        render(<CanvasPage />);
+        expect(screen.getByTitle('Zoom In')).toBeInTheDocument();
+        expect(screen.getByTitle('Zoom Out')).toBeInTheDocument();
+        expect(screen.getByTitle('Reset Zoom')).toBeInTheDocument();
     });
 
-    it.skip('renders zoom percentage display at 100%', () => {
-        // Expected: screen.getByText('100%')
+    it('renders zoom percentage display at 100%', () => {
+        render(<CanvasPage />);
+        expect(screen.getByText('100%')).toBeInTheDocument();
     });
 
-    it.skip('selects a shape tool when clicked', () => {
-        // Expected: clicking Rectangle tool button changes active tool
+    it('selects a shape tool when clicked', () => {
+        render(<CanvasPage />);
+        const rectBtn = screen.getByText('Rectangle').closest('button');
+        fireEvent.click(rectBtn);
+        // After clicking, the button should have the active gradient class
+        expect(rectBtn.className).toContain('from-purple-600');
     });
 
-    it.skip('renders the Konva stage (mocked)', () => {
-        // Expected: screen.getByTestId('stage') is in document
+    it('renders the Konva stage (mocked)', () => {
+        render(<CanvasPage />);
+        expect(screen.getByTestId('stage')).toBeInTheDocument();
     });
 
-    it.skip('renders the Clear Canvas button', () => {
-        // Expected: screen.getByText('Clear Canvas')
+    it('renders the Clear Canvas button', () => {
+        render(<CanvasPage />);
+        expect(screen.getByText('Clear Canvas')).toBeInTheDocument();
     });
 
-    it.skip('renders the Settings button', () => {
-        // Expected: screen.getByTitle('Settings')
+    it('renders the Settings button', () => {
+        render(<CanvasPage />);
+        expect(screen.getByTitle('Settings')).toBeInTheDocument();
     });
 
-    it.skip('renders the Log Out button', () => {
-        // Expected: screen.getByTitle('Log Out')
+    it('renders the Log Out button', () => {
+        render(<CanvasPage />);
+        expect(screen.getByTitle('Log Out')).toBeInTheDocument();
     });
 
-    it.skip('renders Tools and Shapes section headers', () => {
-        // Expected: screen.getByText('Tools') and screen.getByText('Shapes')
+    it('renders Tools and Shapes section headers', () => {
+        render(<CanvasPage />);
+        expect(screen.getByText('Tools')).toBeInTheDocument();
+        expect(screen.getByText('Shapes')).toBeInTheDocument();
     });
 });

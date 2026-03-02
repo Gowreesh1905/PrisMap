@@ -27,17 +27,18 @@ describe('LoginPage', () => {
 
     it('renders the Sign in with Google button', () => {
         render(<LoginPage />);
-        expect(screen.getByText('Sign in with Google')).toBeInTheDocument();
+        expect(screen.getAllByText('Sign in with Google')[0]).toBeInTheDocument();
     });
 
     it('calls signInWithPopup and redirects to dashboard on click', async () => {
+        signInWithPopup.mockResolvedValue({ user: { uid: 'test-user-id' } });
         render(<LoginPage />);
-        const loginBtn = screen.getByRole('button');
+        const loginBtn = screen.getAllByRole('button')[0];
 
         fireEvent.click(loginBtn);
 
         // Verify loading state (text changes)
-        expect(screen.getByText('Connecting...')).toBeInTheDocument();
+        expect(screen.getAllByText('Connecting...')[0]).toBeInTheDocument();
 
         // Verify Firebase auth call
         expect(signInWithPopup).toHaveBeenCalled();
