@@ -41,27 +41,25 @@ const ShortcutContext = createContext(null);
  * Persists overrides in localStorage.
  */
 export function ShortcutProvider({ children }) {
-    const [shortcuts, setShortcuts] = useState(DEFAULT_SHORTCUTS);
-
-    // Load saved shortcuts from localStorage on mount
-    useEffect(() => {
+    const [shortcuts, setShortcuts] = useState(() => {
+        if (typeof window === "undefined") return DEFAULT_SHORTCUTS;
         try {
             const saved = localStorage.getItem(STORAGE_KEY);
             if (saved) {
                 const parsed = JSON.parse(saved);
-                // Merge saved combos into defaults (preserves descriptions/categories)
                 const merged = { ...DEFAULT_SHORTCUTS };
                 for (const key of Object.keys(merged)) {
                     if (parsed[key]) {
                         merged[key] = { ...merged[key], combo: parsed[key] };
                     }
                 }
-                setShortcuts(merged);
+                return merged;
             }
         } catch {
             // Ignore corrupt localStorage
         }
-    }, []);
+        return DEFAULT_SHORTCUTS;
+    });
 
     // Persist to localStorage whenever shortcuts change
     const persist = useCallback((updated) => {

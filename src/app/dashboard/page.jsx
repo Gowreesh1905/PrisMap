@@ -238,7 +238,7 @@ export default function Dashboard() {
                   onClick={() => setShowProfileModal(false)}
                   className="mt-4 text-sm text-slate-500 hover:text-slate-400 transition-colors"
                 >
-                  I'll do this later
+                  I&apos;ll do this later
                 </button>
               </div>
             </div>

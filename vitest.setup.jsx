@@ -58,7 +58,7 @@ vi.mock('@/lib/firebase', () => ({
 vi.mock('firebase/firestore', () => ({
     getFirestore: vi.fn(),
     doc: vi.fn(),
-    setDoc: vi.fn(),
+    setDoc: vi.fn().mockResolvedValue(),
     getDoc: vi.fn().mockResolvedValue({
         exists: () => true,
         data: () => ({
@@ -70,7 +70,18 @@ vi.mock('firebase/firestore', () => ({
     }),
     collection: vi.fn(),
     serverTimestamp: vi.fn(),
-    onSnapshot: vi.fn(),
+    onSnapshot: vi.fn(() => vi.fn()),
+    deleteDoc: vi.fn().mockResolvedValue(),
+    query: vi.fn(),
+    where: vi.fn(),
+    orderBy: vi.fn(),
+    updateDoc: vi.fn().mockResolvedValue(),
+    addDoc: vi.fn().mockResolvedValue({ id: 'mock-doc-id' }),
+    deleteField: vi.fn(),
+    arrayUnion: vi.fn(),
+    arrayRemove: vi.fn(),
+    writeBatch: vi.fn(() => ({ delete: vi.fn(), commit: vi.fn().mockResolvedValue() })),
+    getDocs: vi.fn().mockResolvedValue({ docs: [], forEach: vi.fn() }),
 }));
 
 vi.mock('firebase/storage', () => ({
@@ -133,3 +144,36 @@ vi.mock('canvas', () => ({
         loadImage: () => Promise.resolve({}),
     }
 }));
+
+// Mock ShortcutContext with default shortcuts data
+vi.mock('@/contexts/ShortcutContext', () => ({
+    ShortcutProvider: ({ children }) => children,
+    useShortcuts: () => ({
+        shortcuts: {
+            undo: { combo: "ctrl+z", description: "Undo action", category: "canvas" },
+            redo: { combo: "ctrl+y", description: "Redo action", category: "canvas" },
+            save: { combo: "ctrl+s", description: "Save canvas", category: "canvas" },
+            copy: { combo: "ctrl+c", description: "Copy selected", category: "canvas" },
+            paste: { combo: "ctrl+v", description: "Paste clipboard", category: "canvas" },
+            duplicate: { combo: "ctrl+d", description: "Duplicate selected", category: "canvas" },
+            delete: { combo: "delete", description: "Delete selected element", category: "canvas" },
+            escape: { combo: "escape", description: "Deselect / Cancel drawing", category: "canvas" },
+            selectTool: { combo: "1", description: "Select tool", category: "tools" },
+            penTool: { combo: "2", description: "Pen tool", category: "tools" },
+            eraserTool: { combo: "3", description: "Eraser tool", category: "tools" },
+            textTool: { combo: "4", description: "Text tool", category: "tools" },
+            rectangleTool: { combo: "5", description: "Rectangle shape", category: "tools" },
+            circleTool: { combo: "6", description: "Circle shape", category: "tools" },
+            triangleTool: { combo: "7", description: "Triangle shape", category: "tools" },
+            starTool: { combo: "8", description: "Star shape", category: "tools" },
+            arrowTool: { combo: "9", description: "Arrow tool", category: "tools" },
+            lineTool: { combo: "l", description: "Line tool", category: "tools" },
+            hexagonTool: { combo: "h", description: "Hexagon shape", category: "tools" },
+            pentagonTool: { combo: "j", description: "Pentagon shape", category: "tools" },
+        },
+        updateShortcut: vi.fn(() => ({ success: true })),
+        resetToDefaults: vi.fn(),
+        getComboToActionMap: vi.fn(() => ({})),
+    }),
+}));
+

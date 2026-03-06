@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import {
@@ -27,9 +27,9 @@ import {
   AlertTriangle,
   Trash2,
   X,
-  Edit2, // Added Edit2 icon
+  Edit2,
 } from "lucide-react";
-import { useSearchParams } from "next/navigation"; // Import useSearchParams
+import { useSearchParams } from "next/navigation";
 import Navbar from "@/components/Navbar";
 
 // Predefined list of 10 countries with codes, names, lengths, and placeholders
@@ -47,23 +47,21 @@ const COUNTRIES = [
 ];
 
 /**
- * Settings Page Component.
- * 
- * @description
- * Allows users to manage their profile data and account settings.
- * This component provides a comprehensive interface for:
- * - Updating extended profile information (avatar, bio, job title, phone).
- * - Toggling between "View" and "Edit" modes for profile details.
- * - Permanently deleting the user account and all associated data (projects, canvases).
- * 
- * @remarks
- * Uses glassmorphism design principles to match the dashboard aesthetic.
- * All data persistence is handled via Firebase Firestore.
- * 
- * @component
- * @returns {React.JSX.Element} The rendered Settings page.
+ * Settings Page Component — wrapped in Suspense for useSearchParams compatibility.
  */
 export default function SettingsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-screen w-full items-center justify-center bg-[var(--color-bg-base)]">
+        <Loader2 className="animate-spin text-primary" size={40} />
+      </div>
+    }>
+      <SettingsPageContent />
+    </Suspense>
+  );
+}
+
+function SettingsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   // -- State: UI & Loading --

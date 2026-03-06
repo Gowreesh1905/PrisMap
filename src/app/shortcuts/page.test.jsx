@@ -19,24 +19,16 @@ describe('Shortcuts Page Integration Tests', () => {
 
     it('renders subtitle text', () => {
         render(<ShortcutsPage />);
-        expect(screen.getByText('Quick access to all features')).toBeInTheDocument();
+        expect(screen.getByText('Click the pencil icon to customize any shortcut')).toBeInTheDocument();
     });
 
-    it('renders all three shortcut sections', () => {
+    it('renders Canvas and Tool Selection shortcut sections', () => {
         render(<ShortcutsPage />);
-        expect(screen.getByText('Global')).toBeInTheDocument();
         expect(screen.getByText('Canvas')).toBeInTheDocument();
         expect(screen.getByText('Tool Selection')).toBeInTheDocument();
     });
 
-    it('renders correct Global shortcuts (3 items)', () => {
-        render(<ShortcutsPage />);
-        expect(screen.getByText('Open search')).toBeInTheDocument();
-        expect(screen.getByText('Open settings')).toBeInTheDocument();
-        expect(screen.getByText('Close dialogs / Cancel')).toBeInTheDocument();
-    });
-
-    it('renders correct Canvas shortcuts (5 items)', () => {
+    it('renders correct Canvas shortcuts', () => {
         render(<ShortcutsPage />);
         expect(screen.getByText('Undo action')).toBeInTheDocument();
         expect(screen.getByText('Redo action')).toBeInTheDocument();
@@ -45,7 +37,7 @@ describe('Shortcuts Page Integration Tests', () => {
         expect(screen.getByText('Deselect / Cancel drawing')).toBeInTheDocument();
     });
 
-    it('renders correct Tool Selection shortcuts (9 items)', () => {
+    it('renders correct Tool Selection shortcuts', () => {
         render(<ShortcutsPage />);
         expect(screen.getByText('Select tool')).toBeInTheDocument();
         expect(screen.getByText('Pen tool')).toBeInTheDocument();
@@ -60,14 +52,14 @@ describe('Shortcuts Page Integration Tests', () => {
 
     it('renders KeyBadge elements for key combinations', () => {
         render(<ShortcutsPage />);
-        // Ctrl key should appear multiple times
+        // Ctrl key should appear multiple times for canvas shortcuts
         const ctrlBadges = screen.getAllByText('Ctrl');
-        expect(ctrlBadges.length).toBeGreaterThanOrEqual(3); // Ctrl+K, Ctrl+,, Ctrl+Z, Ctrl+Y, Ctrl+S
+        expect(ctrlBadges.length).toBeGreaterThanOrEqual(3);
     });
 
-    it('renders the Pro Tip section', () => {
+    it('renders the Tip section', () => {
         render(<ShortcutsPage />);
-        expect(screen.getByText(/Pro Tip:/)).toBeInTheDocument();
+        expect(screen.getByText(/Tip:/)).toBeInTheDocument();
     });
 
     it('renders the back button with aria-label', () => {

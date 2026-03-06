@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useMemo } from 'react';
 
 /**
  * A reusable hook for registering keyboard shortcuts
@@ -11,6 +11,9 @@ import { useEffect, useCallback } from 'react';
  * });
  */
 export function useKeyboardShortcuts(shortcuts, deps = []) {
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const stableDeps = useMemo(() => deps, deps);
+
     const handleKeyDown = useCallback((event) => {
         // Don't trigger shortcuts when typing in inputs
         const target = event.target;
@@ -42,7 +45,8 @@ export function useKeyboardShortcuts(shortcuts, deps = []) {
             event.preventDefault();
             callback(event);
         }
-    }, [shortcuts, ...deps]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [shortcuts, stableDeps]);
 
     useEffect(() => {
         window.addEventListener('keydown', handleKeyDown);
@@ -51,3 +55,4 @@ export function useKeyboardShortcuts(shortcuts, deps = []) {
 }
 
 export default useKeyboardShortcuts;
+
