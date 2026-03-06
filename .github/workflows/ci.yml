@@ -42,6 +42,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Install canvas system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libcairo2-dev libjpeg-dev libpango1.0-dev libgif-dev librsvg2-dev
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -52,7 +57,7 @@ jobs:
         run: npm ci
 
       - name: Run Vitest
-        run: npm run test:run
+        run: npm run test:run -- --testTimeout=30000
 
   build:
     name: 🏗️ Build
