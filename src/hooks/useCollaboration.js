@@ -222,16 +222,27 @@ export default function useCollaboration(canvasId, user) {
     //    managed on the canvas doc, not here.
     // ─────────────────────────────────────────────
     const toggleShare = useCallback(async () => {
-        if (!canvasId) return;
+        if (!canvasId) {
+            console.warn('[Collaboration] toggleShare called without canvasId');
+            return;
+        }
 
         const canvasRef = doc(db, 'canvases', canvasId);
         const newValue = !isShared;
+        console.log(`[Collaboration] Toggling share to ${newValue} for canvas ${canvasId}`);
         try {
-            await updateDoc(canvasRef, { isPublic: newValue });
+            // Use setDoc with merge instead of updateDoc — works even if doc doesn't exist yet
+            await setDoc(canvasRef, { isPublic: newValue }, { merge: true });
             setIsShared(newValue);
-            console.log(`[Collaboration] Canvas sharing ${newValue ? 'ENABLED' : 'DISABLED'}`);
+            console.log(`[Collaboration] Canvas sharing ${newValue ? 'ENABLED' : 'DISABLED'} ✅`);
         } catch (error) {
-            console.error('[Collaboration] Failed to toggle share:', error.code, error.message);
+            console.error('[Collaboration] Failed to toggle share:', error);
+            console.error('[Collaboration] Error details:', {
+                code: error.code,
+                message: error.message,
+                canvasId,
+                newValue
+            });
         }
     }, [canvasId, isShared]);
 
