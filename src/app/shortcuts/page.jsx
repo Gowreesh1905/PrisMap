@@ -149,7 +149,7 @@ function ShortcutSection({ title, icon: Icon, items, color, isDark, onEdit }) {
 // ─── Key Recorder Modal ─────────────────────────────────────────────
 
 function KeyRecorderModal({ actionId, description, isDark, onSave, onCancel, currentCombo }) {
-    const [captured, setCaptured] = useState(null);
+    const [captured, setCaptured] = useState(currentCombo || null);
     const [error, setError] = useState(null);
 
     useEffect(() => {

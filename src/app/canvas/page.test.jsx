@@ -16,8 +16,9 @@ import { onAuthStateChanged } from 'firebase/auth'
  * SOLUTION: Move `deleteSelected` definition above the useEffect that
  * references it, or convert to useCallback and hoist.
  *
- * Tests below are SKIPPED until the source code is fixed.
- * All tests are documented for integration coverage tracking.
+ * NOTE: The tests below are currently enabled and may surface issues related
+ * to the temporal dead zone described above. They also serve as integration
+ * coverage documentation.
  */
 import CanvasPage from './page'
 

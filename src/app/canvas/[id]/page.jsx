@@ -161,16 +161,18 @@ export default function CanvasPage() {
                 const isCollaborator = (data.collaborators || []).includes(user.uid);
                 const isPublicCanvas = data.isPublic === true;
 
-                console.log('[Access Control]', {
-                    myUid: user.uid,
-                    docOwnerId: data.ownerId,
-                    isPublicField: data.isPublic,
-                    collaborators: data.collaborators,
-                    isOwner,
-                    isCollaborator,
-                    isPublicCanvas,
-                    allData: data
-                });
+                if (process.env.NODE_ENV !== 'production') {
+                    console.log('[Access Control]', {
+                        myUid: user.uid,
+                        docOwnerId: data.ownerId,
+                        isPublicField: data.isPublic,
+                        collaborators: data.collaborators,
+                        isOwner,
+                        isCollaborator,
+                        isPublicCanvas,
+                        allData: data
+                    });
+                }
 
                 if (!isOwner && !isCollaborator && !isPublicCanvas) {
                     setAccessDenied(true);
@@ -220,8 +222,8 @@ export default function CanvasPage() {
                 updatedAt: serverTimestamp()
             };
 
-            // Only set ownerId + createdAt if we are the owner (or it's a brand new canvas)
-            if (!canvasOwnerRef.current || canvasOwnerRef.current === user.uid) {
+            // Only set ownerId + createdAt if this is a brand new canvas (no owner yet)
+            if (!canvasOwnerRef.current) {
                 saveData.ownerId = user.uid;
                 saveData.createdAt = serverTimestamp();
             }
@@ -2482,7 +2484,7 @@ export default function CanvasPage() {
                 shareKey={shareKey}
                 onGenerateKey={generateShareKey}
                 activeUsers={activeUsers}
-                ownerUid={user?.uid}
+                ownerUid={canvasOwnerRef.current}
                 currentUserUid={user?.uid}
             />
         </div >
