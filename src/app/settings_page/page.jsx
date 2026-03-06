@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import {
@@ -63,7 +63,7 @@ const COUNTRIES = [
  * @component
  * @returns {React.JSX.Element} The rendered Settings page.
  */
-export default function SettingsPage() {
+function SettingsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   // -- State: UI & Loading --
@@ -627,5 +627,13 @@ export default function SettingsPage() {
 
 
     </div>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin" size={32} /></div>}>
+      <SettingsPageContent />
+    </Suspense>
   );
 }

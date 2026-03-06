@@ -17,10 +17,14 @@ import {
     ChevronUp, ChevronDown, ChevronsUp, ChevronsDown, Group as GroupIcon, Ungroup, RotateCw
 } from 'lucide-react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from '@/lib/firebase';
 import LayersPanel from '@/components/LayersPanel';
+import LiveCursors from '@/components/LiveCursors';
+import CollaborationPanel from '@/components/CollaborationPanel';
+import { useShortcuts } from '@/contexts/ShortcutContext';
+import useCollaboration from '@/hooks/useCollaboration';
 
 const CANVAS_WIDTH = typeof window !== 'undefined' ? window.innerWidth - 480 : 1200;
 const CANVAS_HEIGHT = typeof window !== 'undefined' ? window.innerHeight - 56 : 800;
@@ -81,6 +85,10 @@ export default function CanvasPage() {
     const [lastSaved, setLastSaved] = useState(null);
     const saveTimeoutRef = useRef(null);
 
+    // Collaboration hook — presence, cursors, sharing
+    const { activeUsers, remoteCursors, updateCursorPosition, isShared, toggleShare, shareKey, generateShareKey, myColor } =
+        useCollaboration(canvasId, user);
+
     // Drawing settings
     const [strokeColor, setStrokeColor] = useState('#000000');
     const [fillColor, setFillColor] = useState('#8b3dff');
@@ -96,6 +104,8 @@ export default function CanvasPage() {
     const [backgroundPattern, setBackgroundPattern] = useState('grid'); // 'grid' or 'dots'
     const [rightPanelTab, setRightPanelTab] = useState('design'); // 'design' | 'layers' | 'export'
     const transformerRef = useRef(null);
+    const [showSharePanel, setShowSharePanel] = useState(false);
+    const [accessDenied, setAccessDenied] = useState(false);
 
     // Font settings for text elements
     const [fontFamily, setFontFamily] = useState('Arial');
@@ -124,31 +134,73 @@ export default function CanvasPage() {
     }, [router]);
 
     /**
-     * Load canvas data from Firestore
+     * Load canvas data from Firestore (real-time listener).
+     * Uses onSnapshot instead of getDoc so remote changes appear live.
+     * Skips updates from the local user (_lastModifiedBy check) to prevent echo.
      */
+    const isFirstLoad = useRef(true);
+    const canvasOwnerRef = useRef(null);  // tracks who the real owner is
     useEffect(() => {
         if (!user || !canvasId) return;
 
-        const loadCanvas = async () => {
-            try {
-                const docRef = doc(db, 'canvases', canvasId);
-                const docSnap = await getDoc(docRef);
-
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    setCanvasTitle(data.title || 'Untitled');
-                    setElements(data.elements || []);
-                    setHistory([data.elements || []]);
-                    setHistoryStep(0);
-                }
+        const docRef = doc(db, 'canvases', canvasId);
+        const unsubscribe = onSnapshot(docRef, (docSnap) => {
+            if (!docSnap.exists()) {
                 setLoading(false);
-            } catch (error) {
-                console.error('Error loading canvas:', error);
-                setLoading(false);
+                return;
             }
-        };
 
-        loadCanvas();
+            const data = docSnap.data();
+
+            // On first load, always apply the data
+            if (isFirstLoad.current) {
+                isFirstLoad.current = false;
+
+                // Access control: check if user is allowed
+                const isOwner = data.ownerId === user.uid;
+                const isCollaborator = (data.collaborators || []).includes(user.uid);
+                const isPublicCanvas = data.isPublic === true;
+
+                if (process.env.NODE_ENV !== 'production') {
+                    console.log('[Access Control]', {
+                        myUid: user.uid,
+                        docOwnerId: data.ownerId,
+                        isPublicField: data.isPublic,
+                        collaborators: data.collaborators,
+                        isOwner,
+                        isCollaborator,
+                        isPublicCanvas,
+                        allData: data
+                    });
+                }
+
+                if (!isOwner && !isCollaborator && !isPublicCanvas) {
+                    setAccessDenied(true);
+                    setLoading(false);
+                    return;
+                }
+
+                setCanvasTitle(data.title || 'Untitled');
+                setElements(data.elements || []);
+                setHistory([data.elements || []]);
+                setHistoryStep(0);
+                canvasOwnerRef.current = data.ownerId || null;
+                setLoading(false);
+                return;
+            }
+
+            // On subsequent updates, skip if WE made this change (prevents echo)
+            if (data._lastModifiedBy === user.uid) return;
+
+            // Remote change — update elements and title
+            setCanvasTitle(data.title || 'Untitled');
+            setElements(data.elements || []);
+        }, (error) => {
+            console.error('[Collaboration] Canvas listener error:', error.code, error.message);
+            setLoading(false);
+        });
+
+        return () => unsubscribe();
     }, [user, canvasId]);
 
     /**
@@ -160,19 +212,28 @@ export default function CanvasPage() {
         setSaving(true);
         try {
             const docRef = doc(db, 'canvases', canvasId);
-            await setDoc(docRef, {
+
+            // Build save data — never overwrite ownerId for collaborators
+            const saveData = {
                 id: canvasId,
                 title: titleToSave || canvasTitle,
                 elements: elementsToSave || elements,
-                ownerId: user.uid,
-                updatedAt: serverTimestamp(),
-                createdAt: serverTimestamp()
-            }, { merge: true });
+                _lastModifiedBy: user.uid,
+                updatedAt: serverTimestamp()
+            };
+
+            // Only set ownerId + createdAt if this is a brand new canvas (no owner yet)
+            if (!canvasOwnerRef.current) {
+                saveData.ownerId = user.uid;
+                saveData.createdAt = serverTimestamp();
+            }
+
+            await setDoc(docRef, saveData, { merge: true });
 
             setLastSaved(new Date());
             console.log('Canvas saved successfully');
         } catch (error) {
-            console.error('Error saving canvas:', error);
+            console.error('[Collaboration] Save error:', error.code, error.message);
         } finally {
             setSaving(false);
         }
@@ -693,9 +754,42 @@ export default function CanvasPage() {
     };
 
     /**
-     * Keyboard shortcuts - using capture phase to override browser defaults
+     * Keyboard shortcuts — reads bindings from ShortcutContext so user
+     * customizations on /shortcuts are reflected here in real time.
      */
+    const { getComboToActionMap } = useShortcuts();
+
     useEffect(() => {
+        const comboMap = getComboToActionMap();
+
+        // Map action IDs to the tool name they activate
+        const actionToTool = {
+            selectTool: 'select',
+            penTool: 'pen',
+            eraserTool: 'eraser',
+            textTool: 'text',
+            rectangleTool: 'rectangle',
+            circleTool: 'circle',
+            triangleTool: 'triangle',
+            starTool: 'star',
+            arrowTool: 'arrow',
+            lineTool: 'line',
+            hexagonTool: 'hexagon',
+            pentagonTool: 'pentagon',
+        };
+
+        /** Build combo string from a KeyboardEvent (matches ShortcutContext format) */
+        const eventToCombo = (e) => {
+            const parts = [];
+            if (e.ctrlKey || e.metaKey) parts.push('ctrl');
+            if (e.shiftKey) parts.push('shift');
+            if (e.altKey) parts.push('alt');
+            let key = e.key.toLowerCase();
+            if (key === ' ') key = 'space';
+            parts.push(key);
+            return parts.join('+');
+        };
+
         const handleKeyDown = (e) => {
             // Skip if editing title
             if (isEditingTitle) return;
@@ -708,87 +802,64 @@ export default function CanvasPage() {
             }
 
             let handled = false;
+            const combo = eventToCombo(e);
+            const action = comboMap[combo];
 
-            // Undo: Ctrl+Z
-            if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
-                undo();
-                handled = true;
+            // --- Customizable shortcuts (from ShortcutContext) ---
+            if (action) {
+                switch (action) {
+                    case 'undo': undo(); handled = true; break;
+                    case 'redo': redo(); handled = true; break;
+                    case 'save': saveCanvas(elements, canvasTitle); handled = true; break;
+                    case 'copy': copySelected(); handled = true; break;
+                    case 'paste': pasteClipboard(); handled = true; break;
+                    case 'duplicate': duplicateSelected(); handled = true; break;
+                    case 'delete':
+                        if (selectedId) {
+                            const newElements = elements.filter(el => el.id !== selectedId);
+                            saveToHistory(newElements);
+                            setSelectedId(null);
+                            handled = true;
+                        }
+                        break;
+                    case 'escape':
+                        setSelectedId(null);
+                        setIsDrawing(false);
+                        setCurrentPoints([]);
+                        handled = true;
+                        break;
+                    default:
+                        // Check if it's a tool-selection action
+                        if (actionToTool[action]) {
+                            setTool(actionToTool[action]);
+                            handled = true;
+                        }
+                        break;
+                }
             }
-            // Redo: Ctrl+Y or Ctrl+Shift+Z
-            else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
-                redo();
-                handled = true;
-            }
-            // Save: Ctrl+S
-            else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-                saveCanvas(elements, canvasTitle);
-                handled = true;
-            }
-            // Copy
-            else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
-                copySelected();
-                handled = true;
-            }
-            // Paste
-            else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
-                pasteClipboard();
-                handled = true;
-            }
-            // Duplicate
-            else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
-                duplicateSelected();
-                handled = true;
-            }
-            // Delete: Delete or Backspace
-            else if (e.key === 'Delete' || e.key === 'Backspace') {
-                if (selectedId) {
-                    const newElements = elements.filter(el => el.id !== selectedId);
-                    saveToHistory(newElements);
-                    setSelectedId(null);
+
+            // --- Non-customizable shortcuts (z-index, grid toggle) ---
+            if (!handled) {
+                if (e.key === ']' && !e.ctrlKey && !e.metaKey) {
+                    e.shiftKey ? bringToFront() : bringForward();
+                    handled = true;
+                } else if (e.key === '[' && !e.ctrlKey && !e.metaKey) {
+                    e.shiftKey ? sendToBack() : sendBackward();
+                    handled = true;
+                } else if (e.key === 'g' && !e.ctrlKey && !e.metaKey) {
+                    setBackgroundPattern(prev => prev === 'grid' ? 'dots' : 'grid');
                     handled = true;
                 }
             }
-            // Escape: Deselect or cancel current action
-            else if (e.key === 'Escape') {
+
+            // Also handle Backspace as delete (always, in addition to the customizable delete key)
+            if (!handled && e.key === 'Backspace' && selectedId) {
+                const newElements = elements.filter(el => el.id !== selectedId);
+                saveToHistory(newElements);
                 setSelectedId(null);
-                setIsDrawing(false);
-                setCurrentPoints([]);
                 handled = true;
-            }
-            // Z-index: [ and ] keys
-            else if (e.key === ']' && !e.ctrlKey && !e.metaKey) {
-                e.shiftKey ? bringToFront() : bringForward();
-                handled = true;
-            }
-            else if (e.key === '[' && !e.ctrlKey && !e.metaKey) {
-                e.shiftKey ? sendToBack() : sendBackward();
-                handled = true;
-            }
-            // Toggle background pattern with 'g'
-            else if (e.key === 'g' && !e.ctrlKey && !e.metaKey) {
-                setBackgroundPattern(prev => prev === 'grid' ? 'dots' : 'grid');
-                handled = true;
-            }
-            // Number keys for tool selection (1-9) - no modifiers
-            else if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
-                const toolMap = {
-                    '1': 'select',
-                    '2': 'pen',
-                    '3': 'eraser',
-                    '4': 'text',
-                    '5': 'rectangle',
-                    '6': 'circle',
-                    '7': 'triangle',
-                    '8': 'star',
-                    '9': 'arrow',
-                };
-                if (toolMap[e.key]) {
-                    setTool(toolMap[e.key]);
-                    handled = true;
-                }
             }
 
-            // If we handled the shortcut, prevent default and stop propagation
             if (handled) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -796,13 +867,9 @@ export default function CanvasPage() {
             }
         };
 
-        // Use capture phase (true) to intercept events before other handlers
         document.addEventListener('keydown', handleKeyDown, true);
-
-        return () => {
-            document.removeEventListener('keydown', handleKeyDown, true);
-        };
-    }, [undo, redo, isEditingTitle, saveCanvas, elements, canvasTitle, copySelected, pasteClipboard, duplicateSelected, selectedId, saveToHistory, bringToFront, sendToBack, bringForward, sendBackward]);
+        return () => document.removeEventListener('keydown', handleKeyDown, true);
+    }, [undo, redo, isEditingTitle, saveCanvas, elements, canvasTitle, copySelected, pasteClipboard, duplicateSelected, selectedId, saveToHistory, bringToFront, sendToBack, bringForward, sendBackward, getComboToActionMap]);
 
     /**
      * Handle mouse down - start drawing
@@ -857,9 +924,19 @@ export default function CanvasPage() {
      * Handle mouse move - continue drawing
      */
     const handleMouseMove = (e) => {
+        // Broadcast cursor position to other users (runs even when not drawing)
+        const stage = e.target.getStage();
+        const pointer = stage.getPointerPosition();
+        if (pointer) {
+            const cursorPos = {
+                x: (pointer.x - stagePos.x) / stageScale,
+                y: (pointer.y - stagePos.y) / stageScale,
+            };
+            updateCursorPosition(cursorPos.x, cursorPos.y);
+        }
+
         if (!isDrawing) return;
 
-        const stage = e.target.getStage();
         const point = stage.getPointerPosition();
         const adjustedPoint = {
             x: (point.x - stagePos.x) / stageScale,
@@ -1399,6 +1476,28 @@ export default function CanvasPage() {
         );
     }
 
+    if (accessDenied) {
+        return (
+            <div className="flex h-screen w-full items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
+                <div className="text-center p-8 bg-white rounded-2xl shadow-lg border border-gray-200 max-w-md">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-50 flex items-center justify-center">
+                        <Lock size={28} className="text-red-500" />
+                    </div>
+                    <h2 className="text-xl font-bold text-gray-900 mb-2">Access Denied</h2>
+                    <p className="text-gray-500 text-sm mb-6">
+                        You don&apos;t have permission to view this canvas. Ask the owner to share it with you.
+                    </p>
+                    <button
+                        onClick={() => router.push('/dashboard')}
+                        className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold text-sm rounded-xl hover:from-purple-700 hover:to-indigo-700 shadow-md shadow-purple-500/20 transition-all"
+                    >
+                        ← Back to Dashboard
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="flex flex-col h-screen w-full overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100">
             <input
@@ -1464,6 +1563,42 @@ export default function CanvasPage() {
                             </span>
                         ) : null}
                     </div>
+                </div>
+
+                {/* Collaborator avatars + Share button */}
+                <div className="flex items-center gap-3">
+                    {/* Stacked avatars of online users */}
+                    {activeUsers.length > 1 && (
+                        <div className="flex -space-x-2">
+                            {activeUsers
+                                .filter(u => u.uid !== user?.uid)
+                                .slice(0, 4)
+                                .map(u => (
+                                    <div
+                                        key={u.uid}
+                                        className="w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-white text-[10px] font-bold shadow-sm"
+                                        style={{ backgroundColor: u.color }}
+                                        title={u.displayName}
+                                    >
+                                        {(u.displayName || '?')[0].toUpperCase()}
+                                    </div>
+                                ))}
+                            {activeUsers.filter(u => u.uid !== user?.uid).length > 4 && (
+                                <div className="w-7 h-7 rounded-full border-2 border-white bg-gray-400 flex items-center justify-center text-white text-[10px] font-bold">
+                                    +{activeUsers.filter(u => u.uid !== user?.uid).length - 4}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Share button */}
+                    <button
+                        onClick={() => setShowSharePanel(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-semibold rounded-lg hover:from-purple-700 hover:to-indigo-700 shadow-md shadow-purple-500/20 transition-all"
+                        title="Share canvas"
+                    >
+                        Share
+                    </button>
                 </div>
 
                 {/* Undo/Redo and Zoom controls */}
@@ -1699,6 +1834,9 @@ export default function CanvasPage() {
 
                             {/* Render all elements */}
                             {elements.map(renderShape)}
+
+                            {/* Remote users' cursors */}
+                            <LiveCursors cursors={remoteCursors} />
 
                             {/* Current drawing preview */}
                             {isDrawing && currentPoints.length >= 2 && (
@@ -2337,6 +2475,18 @@ export default function CanvasPage() {
                     </div>
                 </div>
             </div>
+            {/* Collaboration share panel */}
+            <CollaborationPanel
+                isOpen={showSharePanel}
+                onClose={() => setShowSharePanel(false)}
+                isShared={isShared}
+                onToggleShare={toggleShare}
+                shareKey={shareKey}
+                onGenerateKey={generateShareKey}
+                activeUsers={activeUsers}
+                ownerUid={canvasOwnerRef.current}
+                currentUserUid={user?.uid}
+            />
         </div >
     );
 }

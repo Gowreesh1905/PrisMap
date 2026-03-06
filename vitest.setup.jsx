@@ -1,5 +1,11 @@
 import '@testing-library/jest-dom'
-import { vi } from 'vitest'
+import { cleanup } from '@testing-library/react'
+import { afterEach, vi } from 'vitest'
+
+// Ensure DOM is cleaned up between tests (critical with isolate: false)
+afterEach(() => {
+    cleanup();
+});
 
 // Mock Konva/Canvas environment interactions if necessary
 // (e.g., resizing, specialized browser APIs)
@@ -62,9 +68,14 @@ vi.mock('firebase/firestore', () => ({
             ownerId: 'test-user-id'
         })
     }),
+    getDocs: vi.fn().mockResolvedValue({ empty: true, docs: [] }),
+    deleteDoc: vi.fn().mockResolvedValue(undefined),
     collection: vi.fn(),
+    query: vi.fn(),
+    where: vi.fn(),
+    writeBatch: vi.fn(() => ({ delete: vi.fn(), commit: vi.fn().mockResolvedValue(undefined) })),
     serverTimestamp: vi.fn(),
-    onSnapshot: vi.fn(),
+    onSnapshot: vi.fn(() => vi.fn()),
 }));
 
 vi.mock('firebase/storage', () => ({
