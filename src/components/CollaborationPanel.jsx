@@ -33,11 +33,14 @@ export default function CollaborationPanel({
     onClose,
     isShared,
     onToggleShare,
+    shareKey,
+    onGenerateKey,
     activeUsers,
     ownerUid,
     currentUserUid
 }) {
     const [copied, setCopied] = useState(false);
+    const [keyCopied, setKeyCopied] = useState(false);
 
     if (!isOpen) return null;
 
@@ -63,6 +66,18 @@ export default function CollaborationPanel({
             .join('')
             .toUpperCase()
             .slice(0, 2);
+    };
+
+    /** Copy the 6-digit key to clipboard */
+    const handleCopyKey = async () => {
+        if (!shareKey) return;
+        try {
+            await navigator.clipboard.writeText(shareKey);
+            setKeyCopied(true);
+            setTimeout(() => setKeyCopied(false), 2000);
+        } catch (err) {
+            console.error('Failed to copy key:', err);
+        }
     };
 
     return (
@@ -142,6 +157,45 @@ export default function CollaborationPanel({
                             </>
                         )}
                     </button>
+
+                    {/* ── Share Key Section ── */}
+                    <div className="pt-2 border-t border-gray-100">
+                        {shareKey ? (
+                            <div className="space-y-3">
+                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                                    Canvas Key
+                                </label>
+                                <div className="flex items-center gap-2">
+                                    <div className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 flex items-center justify-center">
+                                        <span className="text-lg font-mono font-bold tracking-[0.2em] text-purple-700">
+                                            {shareKey}
+                                        </span>
+                                    </div>
+                                    <button
+                                        onClick={handleCopyKey}
+                                        className={`p-2.5 rounded-xl border transition-all ${keyCopied
+                                            ? 'bg-green-50 text-green-600 border-green-200'
+                                            : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                                            }`}
+                                        title="Copy Key"
+                                    >
+                                        {keyCopied ? <Check size={18} /> : <Link2 size={18} />}
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-gray-500 text-center">
+                                    Share this 6-digit key with collaborators
+                                </p>
+                            </div>
+                        ) : (
+                            <button
+                                onClick={onGenerateKey}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-purple-200 text-purple-600 hover:bg-purple-50 hover:border-purple-300 transition-all font-semibold text-sm"
+                            >
+                                <Users size={15} />
+                                Create Share Key
+                            </button>
+                        )}
+                    </div>
 
                     {/* ── Active Users ── */}
                     <div>

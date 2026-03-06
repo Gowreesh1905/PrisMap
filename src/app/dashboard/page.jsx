@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
-import { collection, query, where, onSnapshot, orderBy, doc, getDoc } from "firebase/firestore";
+import { collection, query, where, onSnapshot, orderBy, doc, getDoc, getDocs } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { Plus, Layout, Loader2, UserCheck, ArrowRight, Key, LogIn, X } from "lucide-react";
 import Navbar from "@/components/Navbar";
@@ -137,26 +137,32 @@ export default function Dashboard() {
   };
 
   /**
-   * Generates a 6-digit key and navigates the user to the canvas workspace with that ID.
-   * @function handleCreateWithKey
-   */
-  const handleCreateWithKey = () => {
-    const newId = Math.floor(100000 + Math.random() * 900000).toString();
-    router.push(`/canvas/${newId}`);
-  };
-
-  /**
    * Joins a canvas by a 6-digit key.
    * @function handleJoinCanvas
    */
-  const handleJoinCanvas = (e) => {
+  const handleJoinCanvas = async (e) => {
     e.preventDefault();
-    if (joinKey.trim().length === 6) {
-      router.push(`/canvas/${joinKey.trim()}`);
-      setShowJoinModal(false);
-      setJoinKey("");
+    const key = joinKey.trim();
+    if (key.length === 6 && /^\d+$/.test(key)) {
+      try {
+        const canvasesRef = collection(db, "canvases");
+        const q = query(canvasesRef, where("shareKey", "==", key));
+        const querySnapshot = await getDocs(q);
+
+        if (!querySnapshot.empty) {
+          const projectDoc = querySnapshot.docs[0];
+          router.push(`/canvas/${projectDoc.id}`);
+          setShowJoinModal(false);
+          setJoinKey("");
+        } else {
+          alert("Invalid key. Please check the code and try again.");
+        }
+      } catch (error) {
+        console.error("Error joining canvas:", error);
+        alert("An error occurred while joining. Please try again.");
+      }
     } else {
-      alert("Please enter a valid 6-digit key.");
+      alert("Please enter a valid 6-digit numeric key.");
     }
   };
 
@@ -194,17 +200,6 @@ export default function Dashboard() {
               <Plus />
             </div>
             <span className="mt-4 text-sm font-semibold text-purple-300">New Project</span>
-          </button>
-
-          {/* Create with 6-digit Key Action Card */}
-          <button
-            onClick={handleCreateWithKey}
-            className="group aspect-[4/5] flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-indigo-300/20 bg-indigo-500/5 hover:bg-indigo-500/10 transition-all duration-300"
-          >
-            <div className="h-14 w-14 rounded-full bg-white/10 flex items-center justify-center text-indigo-400 group-hover:scale-110 transition-transform shadow-lg shadow-indigo-500/10">
-              <Key />
-            </div>
-            <span className="mt-4 text-sm font-semibold text-indigo-300">Create Key</span>
           </button>
 
           {/* Join with Key Action Card */}

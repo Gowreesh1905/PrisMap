@@ -86,7 +86,7 @@ export default function CanvasPage() {
     const saveTimeoutRef = useRef(null);
 
     // Collaboration hook — presence, cursors, sharing
-    const { activeUsers, remoteCursors, updateCursorPosition, isShared, toggleShare, myColor } =
+    const { activeUsers, remoteCursors, updateCursorPosition, isShared, toggleShare, shareKey, generateShareKey, myColor } =
         useCollaboration(canvasId, user);
 
     // Drawing settings
@@ -2479,6 +2479,8 @@ export default function CanvasPage() {
                 onClose={() => setShowSharePanel(false)}
                 isShared={isShared}
                 onToggleShare={toggleShare}
+                shareKey={shareKey}
+                onGenerateKey={generateShareKey}
                 activeUsers={activeUsers}
                 ownerUid={user?.uid}
                 currentUserUid={user?.uid}

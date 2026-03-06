@@ -66,6 +66,7 @@ export default function useCollaboration(canvasId, user) {
     const [activeUsers, setActiveUsers] = useState([]);
     const [remoteCursors, setRemoteCursors] = useState([]);
     const [isShared, setIsShared] = useState(false);
+    const [shareKey, setShareKey] = useState(null);
 
     const lastCursorUpdate = useRef(0);
     const presenceRef = useRef(null);
@@ -181,7 +182,7 @@ export default function useCollaboration(canvasId, user) {
     }, [canvasId, user]);
 
     // ─────────────────────────────────────────────
-    // 4. SHARE STATUS — read isPublic from canvas doc
+    // 4. SHARE STATUS — read isPublic and shareKey from canvas doc
     // ─────────────────────────────────────────────
     useEffect(() => {
         if (!canvasId) return;
@@ -189,7 +190,9 @@ export default function useCollaboration(canvasId, user) {
         const canvasRef = doc(db, 'canvases', canvasId);
         const unsubscribe = onSnapshot(canvasRef, (docSnap) => {
             if (docSnap.exists()) {
-                setIsShared(docSnap.data().isPublic || false);
+                const data = docSnap.data();
+                setIsShared(data.isPublic || false);
+                setShareKey(data.shareKey || null);
             }
         }, (error) => {
             if (error.code !== 'permission-denied') {
@@ -217,9 +220,7 @@ export default function useCollaboration(canvasId, user) {
     }, []);
 
     // ─────────────────────────────────────────────
-    // 6. SHARE CONTROLS — toggle public/private
-    //    Collaborators list (for restricted access) is
-    //    managed on the canvas doc, not here.
+    // 6. SHARE CONTROLS — toggle public/private + key gen
     // ─────────────────────────────────────────────
     const toggleShare = useCallback(async () => {
         if (!canvasId) return;
@@ -235,12 +236,31 @@ export default function useCollaboration(canvasId, user) {
         }
     }, [canvasId, isShared]);
 
+    /**
+     * Generates a 6-digit numeric key for sharing this specific canvas.
+     */
+    const generateShareKey = useCallback(async () => {
+        if (!canvasId) return;
+        const newKey = Math.floor(100000 + Math.random() * 900000).toString();
+        const canvasRef = doc(db, 'canvases', canvasId);
+        try {
+            await updateDoc(canvasRef, { shareKey: newKey });
+            setShareKey(newKey);
+            console.log(`[Collaboration] Generated new share key: ${newKey}`);
+            return newKey;
+        } catch (error) {
+            console.error('[Collaboration] Failed to generate share key:', error);
+        }
+    }, [canvasId]);
+
     return {
         activeUsers,
         remoteCursors,
         updateCursorPosition,
         isShared,
         toggleShare,
+        shareKey,
+        generateShareKey,
         myColor
     };
 }
