@@ -103,6 +103,7 @@ export default function CanvasPage() {
     const [clipboard, setClipboard] = useState(null);    // Copy/paste
     const [backgroundPattern, setBackgroundPattern] = useState('grid'); // 'grid' or 'dots'
     const [rightPanelTab, setRightPanelTab] = useState('design'); // 'design' | 'layers' | 'export'
+    const [isExporting, setIsExporting] = useState(false);
     const transformerRef = useRef(null);
     const [showSharePanel, setShowSharePanel] = useState(false);
     const [accessDenied, setAccessDenied] = useState(false);
@@ -584,24 +585,34 @@ export default function CanvasPage() {
     // ===== EXPORT FUNCTIONS =====
     const exportAsPNG = useCallback(() => {
         if (!stageRef.current) return;
-        const uri = stageRef.current.toDataURL({ pixelRatio: 2 });
-        const link = document.createElement('a');
-        link.download = `${canvasTitle || 'canvas'}.png`;
-        link.href = uri;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        setIsExporting(true);
+        setTimeout(() => {
+            if (!stageRef.current) return;
+            const uri = stageRef.current.toDataURL({ pixelRatio: 2 });
+            const link = document.createElement('a');
+            link.download = `${canvasTitle || 'canvas'}.png`;
+            link.href = uri;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setIsExporting(false);
+        }, 100);
     }, [canvasTitle]);
 
     const exportAsJPG = useCallback(() => {
         if (!stageRef.current) return;
-        const uri = stageRef.current.toDataURL({ pixelRatio: 2, mimeType: 'image/jpeg', quality: 0.9 });
-        const link = document.createElement('a');
-        link.download = `${canvasTitle || 'canvas'}.jpg`;
-        link.href = uri;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        setIsExporting(true);
+        setTimeout(() => {
+            if (!stageRef.current) return;
+            const uri = stageRef.current.toDataURL({ pixelRatio: 2, mimeType: 'image/jpeg', quality: 0.9 });
+            const link = document.createElement('a');
+            link.download = `${canvasTitle || 'canvas'}.jpg`;
+            link.href = uri;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setIsExporting(false);
+        }, 100);
     }, [canvasTitle]);
     // ===== ALIGNMENT WRAPPER =====
     const alignSelected = useCallback((alignment) => {
@@ -1787,7 +1798,19 @@ export default function CanvasPage() {
 
                                 const elements = [];
 
-                                if (backgroundPattern === 'grid') {
+                                if (isExporting) {
+                                    elements.push(
+                                        <Rect
+                                            key="export-bg"
+                                            x={-stagePos.x / stageScale}
+                                            y={-stagePos.y / stageScale}
+                                            width={CANVAS_WIDTH / stageScale}
+                                            height={CANVAS_HEIGHT / stageScale}
+                                            fill="#ffffff"
+                                            listening={false}
+                                        />
+                                    );
+                                } else if (backgroundPattern === 'grid') {
                                     // Grid lines pattern
                                     for (let x = startX; x <= endX; x += gridSize) {
                                         elements.push(
