@@ -1923,7 +1923,7 @@ export default function FlowchartBuilder({ embedded = false, user: embeddedUser 
                                 </div>
 
                                 {/* ── Shape-specific settings section ── */}
-                                <div className="pt-2 border-t border-gray-100">
+                                <div className="pt-2 border-t border-gray-100 text-gray-900">
                                     <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-2">
                                         {selectedIds.length > 1 ? 'Multi-Shape' : shapeTypeName(firstSel.type)} Settings
                                     </p>
