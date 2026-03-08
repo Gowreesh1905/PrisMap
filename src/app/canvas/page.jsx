@@ -9,7 +9,8 @@ import { Stage, Layer, Line, Rect, Circle, Star, RegularPolygon, Text, Arrow, Gr
 import {
     MousePointer2, Pencil, Type, Square, Circle as CircleIcon, Triangle,
     Star as StarIcon, ArrowRight, Minus, Hexagon, Pentagon, Trash2,
-    ZoomIn, ZoomOut, Maximize2, Eraser, Undo, Redo, Settings, LogOut
+    ZoomIn, ZoomOut, Maximize2, Eraser, Undo, Redo, Settings, LogOut,
+    ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
@@ -62,6 +63,9 @@ export default function CanvasPage() {
     // Zoom and pan
     const [stageScale, setStageScale] = useState(1);
     const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
+
+    // Sidebar collapse state
+    const [sidebarOpen, setSidebarOpen] = useState(true);
 
     /**
      * Save current state to history
@@ -847,7 +851,8 @@ export default function CanvasPage() {
 
             <div className="flex flex-1 overflow-hidden">
                 {/* Toolbar */}
-                <div className="w-[200px] bg-white border-r border-gray-200 p-4 overflow-y-auto shadow-sm">
+                <div className={`${sidebarOpen ? 'w-[200px]' : 'w-0'} flex-shrink-0 bg-white border-r border-gray-200 overflow-y-auto shadow-sm transition-all duration-300 overflow-hidden`}>
+                    <div className="w-[200px] p-4">
                     <div className="mb-6">
                         <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
                             Tools
@@ -907,6 +912,18 @@ export default function CanvasPage() {
                             Clear Canvas
                         </button>
                     </div>
+                    </div>
+                </div>
+
+                {/* Sidebar toggle tab */}
+                <div className="flex-shrink-0 flex items-center bg-white border-r border-gray-200">
+                    <button
+                        onClick={() => setSidebarOpen(s => !s)}
+                        className="h-16 w-4 flex items-center justify-center bg-white hover:bg-purple-50 hover:text-purple-600 text-gray-400 transition-colors border-y border-gray-200 rounded-r-lg shadow-sm"
+                        title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+                    >
+                        {sidebarOpen ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
+                    </button>
                 </div>
 
                 {/* Canvas */}
