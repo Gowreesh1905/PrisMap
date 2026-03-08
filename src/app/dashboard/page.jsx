@@ -213,6 +213,17 @@ export default function Dashboard() {
             <span className="mt-4 text-sm font-semibold text-blue-300">Join by Key</span>
           </button>
 
+          {/* Flowchart Builder Action Card */}
+          <button
+            onClick={() => router.push('/flowchart')}
+            className="group aspect-[4/5] flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-emerald-300/20 bg-emerald-500/5 hover:bg-emerald-500/10 transition-all duration-300"
+          >
+            <div className="h-14 w-14 rounded-full bg-white/10 flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg shadow-emerald-500/10">
+              <span className="text-2xl">⬡</span>
+            </div>
+            <span className="mt-4 text-sm font-semibold text-emerald-300">Flowchart Builder</span>
+          </button>
+
           {/* Project Mapping Area */}
           {projects.map((project) => (
             <ProjectCard

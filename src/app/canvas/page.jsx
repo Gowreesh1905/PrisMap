@@ -731,14 +731,14 @@ export default function CanvasPage() {
         }
     };
 
-    const tools = [
+    const drawingTools = [
         { id: 'select', icon: MousePointer2, label: 'Select' },
         { id: 'pen', icon: Pencil, label: 'Pen' },
         { id: 'eraser', icon: Eraser, label: 'Eraser' },
         { id: 'text', icon: Type, label: 'Text' },
     ];
 
-    const shapes = [
+    const drawingShapes = [
         { id: 'rectangle', icon: Square, label: 'Rectangle' },
         { id: 'circle', icon: CircleIcon, label: 'Circle' },
         { id: 'triangle', icon: Triangle, label: 'Triangle' },
@@ -748,6 +748,9 @@ export default function CanvasPage() {
         { id: 'hexagon', icon: Hexagon, label: 'Hexagon' },
         { id: 'pentagon', icon: Pentagon, label: 'Pentagon' },
     ];
+
+    const tools = drawingTools;
+    const shapes = drawingShapes;
 
     const selectedElement = elements.find(el => el.id === selectedId);
 

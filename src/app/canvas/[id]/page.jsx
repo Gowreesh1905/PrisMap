@@ -7,14 +7,15 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Stage, Layer, Line, Rect, Circle, Star, RegularPolygon, Text, Arrow, Image as KonvaImage, Transformer, Group } from 'react-konva';
+import { Stage, Layer, Line, Rect, Circle, Ellipse, Star, RegularPolygon, Text, Arrow, Image as KonvaImage, Transformer, Group } from 'react-konva';
 import {
     MousePointer2, Pencil, Type, Square, Circle as CircleIcon, Triangle,
     Star as StarIcon, ArrowRight, Minus, Hexagon, Pentagon, Trash2,
     ZoomIn, ZoomOut, Maximize2, Eraser, Undo, Redo, Save, Check, ArrowLeft, Image as ImageIcon,
     Copy, Clipboard, Download, AlignLeft, AlignCenter, AlignRight, AlignStartVertical,
     AlignCenterVertical, AlignEndVertical, Layers, Grid3X3, Eye, EyeOff, Lock, Unlock,
-    ChevronUp, ChevronDown, ChevronsUp, ChevronsDown, Group as GroupIcon, Ungroup, RotateCw
+    ChevronUp, ChevronDown, ChevronsUp, ChevronsDown, Group as GroupIcon, Ungroup, RotateCw,
+    Database, User, StickyNote, Diamond, Activity, Zap, PlayCircle, StopCircle, Move, GitMerge, Map
 } from 'lucide-react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, setDoc, getDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
@@ -27,8 +28,114 @@ import { useShortcuts } from '@/contexts/ShortcutContext';
 import useCollaboration from '@/hooks/useCollaboration';
 import Sidebar from '@/components/Sidebar';
 
-const CANVAS_WIDTH = typeof window !== 'undefined' ? window.innerWidth - 480 : 1200;
-const CANVAS_HEIGHT = typeof window !== 'undefined' ? window.innerHeight - 56 : 800;
+const FLOWCHART_NODE_TYPES = new Set([
+    'rectangle', 'diamond', 'circle', 'parallelogram', 'cylinder', 'actor', 'note'
+]);
+
+const FLOWCHART_SHAPE_DEFS = [
+    { id: 'fc-process', label: 'Process', icon: '▭', fill: '#dbeafe', stroke: '#3b82f6', shapeType: 'rectangle', w: 160, h: 60 },
+    { id: 'fc-terminal', label: 'Start / End', icon: '⬭', fill: '#dcfce7', stroke: '#22c55e', shapeType: 'rectangle', w: 160, h: 60 },
+    { id: 'fc-decision', label: 'Decision', icon: '◇', fill: '#fef9c3', stroke: '#eab308', shapeType: 'diamond', w: 160, h: 80 },
+    { id: 'fc-io', label: 'Input/Output', icon: '▱', fill: '#e0e7ff', stroke: '#6366f1', shapeType: 'parallelogram', w: 160, h: 60 },
+    { id: 'fc-connector', label: 'Connector', icon: '○', fill: '#fee2e2', stroke: '#ef4444', shapeType: 'circle', w: 60, h: 60 },
+    { id: 'fc-document', label: 'Document', icon: '⌷', fill: '#fff7ed', stroke: '#f97316', shapeType: 'note', w: 160, h: 70 },
+    { id: 'fc-database', label: 'Database', icon: '⌗', fill: '#f3e8ff', stroke: '#a855f7', shapeType: 'cylinder', w: 120, h: 80 },
+    { id: 'fc-predefined', label: 'Predefined', icon: '▬', fill: '#e0f2fe', stroke: '#0ea5e9', shapeType: 'rectangle', w: 160, h: 60 },
+    { id: 'fc-manual', label: 'Manual Input', icon: '⌕', fill: '#fce7f3', stroke: '#ec4899', shapeType: 'parallelogram', w: 160, h: 60 },
+    { id: 'fc-delay', label: 'Delay', icon: 'D', fill: '#f0fdf4', stroke: '#16a34a', shapeType: 'rectangle', w: 160, h: 60 },
+    { id: 'fc-annotation', label: 'Annotation', icon: '⌐', fill: '#f8fafc', stroke: '#64748b', shapeType: 'note', w: 160, h: 80 },
+    { id: 'fc-data', label: 'Data Store', icon: '⊏', fill: '#f1f5f9', stroke: '#475569', shapeType: 'cylinder', w: 160, h: 60 },
+];
+
+const getFlowchartShapeDef = (toolId) => FLOWCHART_SHAPE_DEFS.find((shape) => shape.id === toolId) || null;
+
+const resolveToolForMode = (toolId, mode) => {
+    if (mode !== 'flowchart') return toolId;
+    const flowShape = getFlowchartShapeDef(toolId);
+    return flowShape ? flowShape.shapeType : toolId;
+};
+
+const FLOW_ANCHOR_SNAP_DISTANCE = 160;
+
+const getFlowNodeSize = (node) => {
+    const rawWidth = Number(node?.width);
+    const rawHeight = Number(node?.height);
+
+    return {
+        width: Math.max(20, Number.isFinite(rawWidth) && rawWidth > 0 ? rawWidth : 80),
+        height: Math.max(20, Number.isFinite(rawHeight) && rawHeight > 0 ? rawHeight : 60),
+    };
+};
+
+const getFlowNodeConnectionPoints = (node) => {
+    const { width, height } = getFlowNodeSize(node);
+    const x = Number(node?.x) || 0;
+    const y = Number(node?.y) || 0;
+
+    return {
+        top: { x: x + width / 2, y },
+        right: { x: x + width, y: y + height / 2 },
+        bottom: { x: x + width / 2, y: y + height },
+        left: { x, y: y + height / 2 },
+    };
+};
+
+const chooseNearestFlowSide = (node, x, y) => {
+    const points = getFlowNodeConnectionPoints(node);
+    return Object.entries(points)
+        .map(([side, pt]) => ({ side, dist: Math.hypot(pt.x - x, pt.y - y) }))
+        .sort((a, b) => a.dist - b.dist)[0]?.side || 'right';
+};
+
+const chooseFacingFlowSides = (fromNode, toNode) => {
+    const fromPts = getFlowNodeConnectionPoints(fromNode);
+    const toPts = getFlowNodeConnectionPoints(toNode);
+    const fromCenter = { x: (fromPts.left.x + fromPts.right.x) / 2, y: (fromPts.top.y + fromPts.bottom.y) / 2 };
+    const toCenter = { x: (toPts.left.x + toPts.right.x) / 2, y: (toPts.top.y + toPts.bottom.y) / 2 };
+
+    const dx = toCenter.x - fromCenter.x;
+    const dy = toCenter.y - fromCenter.y;
+
+    if (Math.abs(dx) >= Math.abs(dy)) {
+        return dx >= 0
+            ? { fromSide: 'right', toSide: 'left' }
+            : { fromSide: 'left', toSide: 'right' };
+    }
+
+    return dy >= 0
+        ? { fromSide: 'bottom', toSide: 'top' }
+        : { fromSide: 'top', toSide: 'bottom' };
+};
+
+const buildOrthogonalConnectorPath = (fromPoint, fromSide, toPoint, toSide) => {
+    const midX = (fromPoint.x + toPoint.x) / 2;
+    const midY = (fromPoint.y + toPoint.y) / 2;
+
+    const fromHorizontal = fromSide === 'left' || fromSide === 'right';
+    const toHorizontal = toSide === 'left' || toSide === 'right';
+
+    if (fromHorizontal && toHorizontal) {
+        return [fromPoint.x, fromPoint.y, midX, fromPoint.y, midX, toPoint.y, toPoint.x, toPoint.y];
+    }
+
+    if (!fromHorizontal && !toHorizontal) {
+        return [fromPoint.x, fromPoint.y, fromPoint.x, midY, toPoint.x, midY, toPoint.x, toPoint.y];
+    }
+
+    if (fromHorizontal) {
+        return [fromPoint.x, fromPoint.y, toPoint.x, fromPoint.y, toPoint.x, toPoint.y];
+    }
+
+    return [fromPoint.x, fromPoint.y, fromPoint.x, toPoint.y, toPoint.x, toPoint.y];
+};
+
+const removeElementAndLinkedConnectors = (items, elementId) => items.filter((el) => {
+    if (el.id === elementId) return false;
+    if (el.flowConnector && (el.fromId === elementId || el.toId === elementId)) return false;
+    return true;
+});
+
+
 
 const URLImage = ({ shape, ...props }) => {
     const [img, setImg] = useState(null);
@@ -74,6 +181,8 @@ export default function CanvasPage() {
     const [currentPoints, setCurrentPoints] = useState([]);
     const [selectedId, setSelectedId] = useState(null);
 
+
+
     // Canvas title state
     const [canvasTitle, setCanvasTitle] = useState('Untitled');
     const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -115,6 +224,46 @@ export default function CanvasPage() {
     const [fontStyle, setFontStyle] = useState('normal'); // 'normal' | 'italic'
     const [fontWeight, setFontWeight] = useState('normal'); // 'normal' | 'bold'
     const [workspaceMode, setWorkspaceMode] = useState('drawing'); // 'drawing' | 'flowchart' | 'poster'
+    const [isToolbarVisible, setIsToolbarVisible] = useState(true);
+    const [flowConnectorStyle, setFlowConnectorStyle] = useState('solid');
+    const [flowConnectorCurved, setFlowConnectorCurved] = useState(false);
+    const [showFlowchartMiniMap, setShowFlowchartMiniMap] = useState(true);
+    const [draggingFlowShapeId, setDraggingFlowShapeId] = useState(null);
+    const [flowConnectStart, setFlowConnectStart] = useState(null);
+    const [flowConnectHoverAnchor, setFlowConnectHoverAnchor] = useState(null);
+    const [hoveredFlowNodeId, setHoveredFlowNodeId] = useState(null);
+
+    // Dynamic Canvas Sizing
+    const stageContainerRef = useRef(null);
+    const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 800 });
+
+    const updateCanvasSize = useCallback(() => {
+        if (stageContainerRef.current) {
+            const { width, height } = stageContainerRef.current.getBoundingClientRect();
+            setCanvasSize({ width, height });
+        }
+    }, []);
+
+    useEffect(() => {
+        updateCanvasSize();
+        window.addEventListener('resize', updateCanvasSize);
+        return () => window.removeEventListener('resize', updateCanvasSize);
+    }, [updateCanvasSize]);
+
+    // Update size when toolbar visibility changes (after animation)
+    useEffect(() => {
+        const timer = setTimeout(updateCanvasSize, 310);
+        return () => clearTimeout(timer);
+    }, [isToolbarVisible, updateCanvasSize]);
+
+    useEffect(() => {
+        const activeTool = resolveToolForMode(tool, workspaceMode);
+        if (workspaceMode !== 'flowchart' || (activeTool !== 'connect' && activeTool !== 'arrow')) {
+            setFlowConnectStart(null);
+            setFlowConnectHoverAnchor(null);
+        }
+    }, [workspaceMode, tool]);
+
 
     // Available fonts
     const fontFamilies = [
@@ -584,6 +733,89 @@ export default function CanvasPage() {
         setElements(newElements);
     }, [elements]);
 
+    const getNearestFlowAnchor = useCallback((x, y, excludeId = null) => {
+        let best = null;
+
+        elements.forEach((el) => {
+            if (!FLOWCHART_NODE_TYPES.has(el.type) || el.visible === false) return;
+            if (excludeId && el.id === excludeId) return;
+
+            const side = chooseNearestFlowSide(el, x, y);
+            const point = getFlowNodeConnectionPoints(el)[side];
+            const dist = Math.hypot(point.x - x, point.y - y);
+
+            if (!best || dist < best.dist) {
+                best = { node: el, side, point, dist };
+            }
+        });
+
+        if (!best || best.dist > FLOW_ANCHOR_SNAP_DISTANCE) return null;
+        return best;
+    }, [elements]);
+
+    const getConnectorPointsForShape = useCallback((connector) => {
+        if (!connector?.flowConnector || !connector.fromId || !connector.toId) {
+            if (connector?.width || connector?.height) {
+                return [connector.x, connector.y, connector.x + connector.width, connector.y + connector.height];
+            }
+            return null;
+        }
+
+        const fromNode = elements.find((el) => el.id === connector.fromId);
+        const toNode = elements.find((el) => el.id === connector.toId);
+        if (!fromNode || !toNode) return null;
+
+        const inferred = chooseFacingFlowSides(fromNode, toNode);
+        const fromSide = connector.dynamicSides === false
+            ? (connector.fromSide || inferred.fromSide)
+            : inferred.fromSide;
+        const toSide = connector.dynamicSides === false
+            ? (connector.toSide || inferred.toSide)
+            : inferred.toSide;
+
+        const fromPoint = getFlowNodeConnectionPoints(fromNode)[fromSide];
+        const toPoint = getFlowNodeConnectionPoints(toNode)[toSide];
+
+        if (!fromPoint || !toPoint) return null;
+
+        if (connector.curved) {
+            const midX = (fromPoint.x + toPoint.x) / 2;
+            return [fromPoint.x, fromPoint.y, midX, fromPoint.y, midX, toPoint.y, toPoint.x, toPoint.y];
+        }
+
+        return buildOrthogonalConnectorPath(fromPoint, fromSide, toPoint, toSide);
+    }, [elements]);
+
+    const createFlowConnectorFromAnchors = useCallback((startInfo, endAnchor) => {
+        if (!startInfo || !endAnchor?.node) return false;
+        if (startInfo.nodeId === endAnchor.node.id) return false;
+
+        const fromNode = elements.find((el) => el.id === startInfo.nodeId);
+        const toNode = elements.find((el) => el.id === endAnchor.node.id);
+        if (!fromNode || !toNode) return false;
+
+        const inferredSides = chooseFacingFlowSides(fromNode, toNode);
+        const stroke = '#64748b';
+        const newConnector = {
+            id: `${Date.now()}-${Math.random()}`,
+            type: 'arrow',
+            flowConnector: true,
+            fromId: startInfo.nodeId,
+            fromSide: startInfo.side || inferredSides.fromSide,
+            toId: endAnchor.node.id,
+            toSide: endAnchor.side || inferredSides.toSide,
+            connectorStyle: flowConnectorStyle,
+            curved: flowConnectorCurved,
+            dynamicSides: true,
+            stroke,
+            fill: stroke,
+            strokeWidth,
+        };
+
+        saveToHistory([...elements, newConnector]);
+        return true;
+    }, [elements, flowConnectorStyle, flowConnectorCurved, strokeWidth, saveToHistory]);
+
     // ===== EXPORT FUNCTIONS =====
     const exportAsPNG = useCallback(() => {
         if (!stageRef.current) return;
@@ -616,6 +848,283 @@ export default function CanvasPage() {
             setIsExporting(false);
         }, 100);
     }, [canvasTitle]);
+
+    const exportFlowchartJSON = useCallback(() => {
+        const flowNodes = elements.filter((el) => FLOWCHART_NODE_TYPES.has(el.type));
+        if (flowNodes.length === 0) {
+            window.alert('No flowchart nodes to export.');
+            return;
+        }
+
+        const flowNodeIds = new Set(flowNodes.map((node) => node.id));
+        const flowConnectors = elements.filter((el) =>
+            el.flowConnector && flowNodeIds.has(el.fromId) && flowNodeIds.has(el.toId)
+        );
+
+        const payload = {
+            nodes: flowNodes.map((node) => {
+                const matchedDef = getFlowchartShapeDef(node.flowNodeType) || FLOWCHART_SHAPE_DEFS.find((def) => def.shapeType === node.type);
+                return {
+                    id: node.id,
+                    type: node.flowNodeType || matchedDef?.id || node.type,
+                    x: Number(node.x) || 0,
+                    y: Number(node.y) || 0,
+                    w: Number(node.width) || matchedDef?.w || 160,
+                    h: Number(node.height) || matchedDef?.h || 60,
+                    label: typeof node.text === 'string' ? node.text : (matchedDef?.label || ''),
+                    fill: node.fill || matchedDef?.fill || '#dbeafe',
+                    stroke: node.stroke || matchedDef?.stroke || '#3b82f6',
+                    strokeWidth: Number(node.strokeWidth) || 2,
+                    fontSize: Number(node.fontSize) || 13,
+                    textColor: node.textColor || '#1e293b',
+                };
+            }),
+            conns: flowConnectors.map((conn) => ({
+                id: conn.id,
+                fromId: conn.fromId,
+                fromSide: conn.fromSide || 'right',
+                toId: conn.toId,
+                toSide: conn.toSide || 'left',
+                label: conn.label || '',
+                style: conn.connectorStyle || 'solid',
+                curved: Boolean(conn.curved),
+                stroke: conn.stroke || '#64748b',
+                strokeWidth: Number(conn.strokeWidth) || 2,
+            })),
+        };
+
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${canvasTitle || 'canvas'}-flowchart.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }, [elements, canvasTitle]);
+
+    const exportFlowchartSVG = useCallback(() => {
+        const flowNodes = elements.filter((el) => FLOWCHART_NODE_TYPES.has(el.type));
+        if (flowNodes.length === 0) {
+            window.alert('No flowchart nodes to export.');
+            return;
+        }
+
+        const flowNodeById = new Map(flowNodes.map((node) => [node.id, node]));
+        const flowConnectors = elements.filter((el) =>
+            el.flowConnector && flowNodeById.has(el.fromId) && flowNodeById.has(el.toId)
+        );
+
+        const minX = Math.min(...flowNodes.map((n) => Number(n.x) || 0)) - 80;
+        const minY = Math.min(...flowNodes.map((n) => Number(n.y) || 0)) - 80;
+        const maxX = Math.max(...flowNodes.map((n) => (Number(n.x) || 0) + getFlowNodeSize(n).width)) + 80;
+        const maxY = Math.max(...flowNodes.map((n) => (Number(n.y) || 0) + getFlowNodeSize(n).height)) + 80;
+
+        const width = Math.max(1, maxX - minX);
+        const height = Math.max(1, maxY - minY);
+
+        const escapeXml = (text) => String(text || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&apos;');
+
+        const nodeMarkup = flowNodes.map((node) => {
+            const x = Number(node.x) || 0;
+            const y = Number(node.y) || 0;
+            const { width: w, height: h } = getFlowNodeSize(node);
+            const fill = node.fill || '#dbeafe';
+            const stroke = node.stroke || '#3b82f6';
+            const strokeWidth = Number(node.strokeWidth) || 2;
+            const text = escapeXml(node.text || getFlowchartShapeDef(node.flowNodeType)?.label || '');
+            const textY = y + (h / 2) + 5;
+
+            let shapeMarkup = '';
+            switch (node.type) {
+                case 'circle':
+                    shapeMarkup = `<ellipse cx="${x + w / 2}" cy="${y + h / 2}" rx="${w / 2}" ry="${h / 2}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"/>`;
+                    break;
+                case 'diamond':
+                    shapeMarkup = `<polygon points="${x + w / 2},${y} ${x + w},${y + h / 2} ${x + w / 2},${y + h} ${x},${y + h / 2}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"/>`;
+                    break;
+                case 'parallelogram':
+                    shapeMarkup = `<polygon points="${x + (w * 0.25)},${y} ${x + w},${y} ${x + (w * 0.75)},${y + h} ${x},${y + h}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"/>`;
+                    break;
+                case 'note':
+                    shapeMarkup = `<polygon points="${x},${y} ${x + (w * 0.8)},${y} ${x + w},${y + (h * 0.2)} ${x + w},${y + h} ${x},${y + h}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"/>`;
+                    break;
+                case 'cylinder':
+                    shapeMarkup = [
+                        `<rect x="${x}" y="${y + (h * 0.1)}" width="${w}" height="${h * 0.8}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"/>`,
+                        `<ellipse cx="${x + w / 2}" cy="${y + (h * 0.1)}" rx="${w / 2}" ry="${h * 0.1}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"/>`,
+                        `<ellipse cx="${x + w / 2}" cy="${y + (h * 0.9)}" rx="${w / 2}" ry="${h * 0.1}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"/>`,
+                    ].join('');
+                    break;
+                case 'actor':
+                    shapeMarkup = [
+                        `<circle cx="${x + (w / 2)}" cy="${y + (h * 0.2)}" r="${h * 0.15}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"/>`,
+                        `<line x1="${x + (w / 2)}" y1="${y + (h * 0.35)}" x2="${x + (w / 2)}" y2="${y + (h * 0.7)}" stroke="${stroke}" stroke-width="${strokeWidth}"/>`,
+                        `<line x1="${x + (w * 0.2)}" y1="${y + (h * 0.5)}" x2="${x + (w * 0.8)}" y2="${y + (h * 0.5)}" stroke="${stroke}" stroke-width="${strokeWidth}"/>`,
+                        `<line x1="${x + (w / 2)}" y1="${y + (h * 0.7)}" x2="${x + (w * 0.3)}" y2="${y + (h * 0.95)}" stroke="${stroke}" stroke-width="${strokeWidth}"/>`,
+                        `<line x1="${x + (w / 2)}" y1="${y + (h * 0.7)}" x2="${x + (w * 0.7)}" y2="${y + (h * 0.95)}" stroke="${stroke}" stroke-width="${strokeWidth}"/>`,
+                    ].join('');
+                    break;
+                default:
+                    shapeMarkup = `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${node.cornerRadius || 4}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"/>`;
+                    break;
+            }
+
+            const textMarkup = text
+                ? `<text x="${x + (w / 2)}" y="${textY}" text-anchor="middle" font-family="Arial" font-size="13" fill="${node.textColor || '#1e293b'}">${text}</text>`
+                : '';
+
+            return `${shapeMarkup}${textMarkup}`;
+        }).join('');
+
+        const connectorMarkup = flowConnectors.map((conn) => {
+            const points = getConnectorPointsForShape(conn);
+            if (!points || points.length < 4) return '';
+            const d = conn.connectorStyle === 'dashed' ? 'stroke-dasharray="10,6"' : '';
+            const stroke = conn.stroke || '#64748b';
+            const strokeWidth = Number(conn.strokeWidth) || 2;
+
+            const polylinePoints = [];
+            for (let i = 0; i < points.length; i += 2) {
+                polylinePoints.push(`${points[i]},${points[i + 1]}`);
+            }
+
+            return `<polyline points="${polylinePoints.join(' ')}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" ${d} marker-end="url(#arrowhead)"/>`;
+        }).join('');
+
+        const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${minX} ${minY} ${width} ${height}">
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto" markerUnits="strokeWidth">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+    </marker>
+  </defs>
+  ${connectorMarkup}
+  ${nodeMarkup}
+</svg>`;
+
+        const blob = new Blob([svg], { type: 'image/svg+xml' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${canvasTitle || 'canvas'}-flowchart.svg`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }, [elements, canvasTitle, getConnectorPointsForShape]);
+
+    const importFlowchartJSON = useCallback(() => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json,application/json';
+
+        input.onchange = (event) => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                try {
+                    const parsed = JSON.parse(String(ev.target?.result || '{}'));
+                    const incomingNodes = Array.isArray(parsed.nodes) ? parsed.nodes : [];
+                    const incomingConns = Array.isArray(parsed.conns) ? parsed.conns : [];
+
+                    if (incomingNodes.length === 0) {
+                        window.alert('Invalid flowchart JSON: missing nodes.');
+                        return;
+                    }
+
+                    const idSeed = Date.now();
+                    const idMap = new Map();
+
+                    const importedNodes = incomingNodes.map((node, index) => {
+                        const matchedDef = getFlowchartShapeDef(node.type) || FLOWCHART_SHAPE_DEFS.find((def) => def.shapeType === node.type);
+                        const shapeType = matchedDef?.shapeType || (FLOWCHART_NODE_TYPES.has(node.type) ? node.type : 'rectangle');
+                        const newId = `${idSeed}-node-${index}`;
+                        idMap.set(String(node.id), newId);
+
+                        const width = Math.max(20, Number(node.w ?? node.width ?? matchedDef?.w ?? 160));
+                        const height = Math.max(20, Number(node.h ?? node.height ?? matchedDef?.h ?? 60));
+
+                        const imported = {
+                            id: newId,
+                            type: shapeType,
+                            x: Number(node.x) || 0,
+                            y: Number(node.y) || 0,
+                            width,
+                            height,
+                            fill: node.fill || matchedDef?.fill || '#dbeafe',
+                            stroke: node.stroke || matchedDef?.stroke || '#3b82f6',
+                            strokeWidth: Number(node.strokeWidth) || 2,
+                            flowNodeType: matchedDef?.id,
+                            text: typeof node.label === 'string' ? node.label : (matchedDef?.label || ''),
+                            fontSize: Number(node.fontSize) || 13,
+                            textColor: node.textColor || '#1e293b',
+                            textAlign: 'center',
+                        };
+
+                        if (matchedDef?.id === 'fc-terminal' || matchedDef?.id === 'fc-delay') {
+                            imported.cornerRadius = Math.max(8, Math.min(width, height) / 2);
+                        }
+
+                        return imported;
+                    });
+
+                    const importedConnectors = incomingConns
+                        .map((conn, index) => {
+                            const fromId = idMap.get(String(conn.fromId));
+                            const toId = idMap.get(String(conn.toId));
+                            if (!fromId || !toId || fromId === toId) return null;
+
+                            const fromNode = importedNodes.find((n) => n.id === fromId);
+                            const toNode = importedNodes.find((n) => n.id === toId);
+                            if (!fromNode || !toNode) return null;
+
+                            const inferred = chooseFacingFlowSides(fromNode, toNode);
+                            const connectorStyle = conn.style === 'dashed' || conn.connectorStyle === 'dashed' ? 'dashed' : 'solid';
+                            const stroke = conn.stroke || '#64748b';
+
+                            return {
+                                id: `${idSeed}-conn-${index}`,
+                                type: 'arrow',
+                                flowConnector: true,
+                                fromId,
+                                fromSide: conn.fromSide || inferred.fromSide,
+                                toId,
+                                toSide: conn.toSide || inferred.toSide,
+                                connectorStyle,
+                                curved: Boolean(conn.curved),
+                                stroke,
+                                fill: stroke,
+                                strokeWidth: Number(conn.strokeWidth) || 2,
+                                label: conn.label || '',
+                            };
+                        })
+                        .filter(Boolean);
+
+                    const merged = [...elements, ...importedNodes, ...importedConnectors];
+                    saveToHistory(merged);
+                    setWorkspaceMode('flowchart');
+                    setTool('select');
+                    setSelectedId(importedNodes[0]?.id || null);
+                } catch (err) {
+                    console.error('Flowchart JSON import failed:', err);
+                    window.alert('Invalid flowchart JSON file.');
+                }
+            };
+
+            reader.readAsText(file);
+        };
+
+        input.click();
+    }, [elements, saveToHistory]);
     // ===== ALIGNMENT WRAPPER =====
     const alignSelected = useCallback((alignment) => {
         // Use multi-element alignment if multiple selected
@@ -629,8 +1138,8 @@ export default function CanvasPage() {
         const el = elements.find(e => e.id === selectedId);
         if (!el || el.type === 'pen') return;
 
-        const viewCenterX = (-stagePos.x + CANVAS_WIDTH / 2) / stageScale;
-        const viewCenterY = (-stagePos.y + CANVAS_HEIGHT / 2) / stageScale;
+        const viewCenterX = (-stagePos.x + canvasSize.width / 2) / stageScale;
+        const viewCenterY = (-stagePos.y + canvasSize.height / 2) / stageScale;
 
         let updates = {};
         const elWidth = el.width || 100;
@@ -648,6 +1157,35 @@ export default function CanvasPage() {
         const newElements = elements.map(e => e.id === selectedId ? { ...e, ...updates } : e);
         saveToHistory(newElements);
     }, [selectedId, selectedIds, elements, stagePos, stageScale, saveToHistory, alignElements]);
+
+    const autoLayoutFlowchart = useCallback(() => {
+        const flowNodes = elements.filter(el => FLOWCHART_NODE_TYPES.has(el.type));
+        if (flowNodes.length === 0) return;
+
+        const cols = Math.max(1, Math.ceil(Math.sqrt(flowNodes.length)));
+        const startX = 120;
+        const startY = 120;
+        const gapX = 220;
+        const gapY = 140;
+
+        const sorted = [...flowNodes].sort((a, b) => (a.y || 0) - (b.y || 0) || (a.x || 0) - (b.x || 0));
+        const positionMap = new Map();
+
+        sorted.forEach((node, index) => {
+            const row = Math.floor(index / cols);
+            const col = index % cols;
+            positionMap.set(node.id, {
+                x: startX + col * gapX,
+                y: startY + row * gapY,
+            });
+        });
+
+        const updated = elements.map(el =>
+            positionMap.has(el.id) ? { ...el, ...positionMap.get(el.id) } : el
+        );
+
+        saveToHistory(updated);
+    }, [elements, saveToHistory]);
 
     // ===== POSITION HELPER =====
     const snapPosition = useCallback((pos) => {
@@ -749,8 +1287,8 @@ export default function CanvasPage() {
                 const newImage = {
                     id: Date.now(),
                     type: 'image',
-                    x: (-stagePos.x + CANVAS_WIDTH / 2) / stageScale - (img.width > 500 ? 250 : img.width / 2),
-                    y: (-stagePos.y + CANVAS_HEIGHT / 2) / stageScale - (img.width > 500 ? (img.height * (500 / img.width)) / 2 : img.height / 2),
+                    x: (-stagePos.x + canvasSize.width / 2) / stageScale - (img.width > 500 ? 250 : img.width / 2),
+                    y: (-stagePos.y + canvasSize.height / 2) / stageScale - (img.width > 500 ? (img.height * (500 / img.width)) / 2 : img.height / 2),
                     width: img.width > 500 ? 500 : img.width, // Limit max width
                     height: img.width > 500 ? (img.height * (500 / img.width)) : img.height,
                     url: url,
@@ -829,7 +1367,7 @@ export default function CanvasPage() {
                     case 'duplicate': duplicateSelected(); handled = true; break;
                     case 'delete':
                         if (selectedId) {
-                            const newElements = elements.filter(el => el.id !== selectedId);
+                            const newElements = removeElementAndLinkedConnectors(elements, selectedId);
                             saveToHistory(newElements);
                             setSelectedId(null);
                             handled = true;
@@ -839,6 +1377,7 @@ export default function CanvasPage() {
                         setSelectedId(null);
                         setIsDrawing(false);
                         setCurrentPoints([]);
+                        setFlowConnectStart(null);
                         handled = true;
                         break;
                     default:
@@ -867,7 +1406,7 @@ export default function CanvasPage() {
 
             // Also handle Backspace as delete (always, in addition to the customizable delete key)
             if (!handled && e.key === 'Backspace' && selectedId) {
-                const newElements = elements.filter(el => el.id !== selectedId);
+                const newElements = removeElementAndLinkedConnectors(elements, selectedId);
                 saveToHistory(newElements);
                 setSelectedId(null);
                 handled = true;
@@ -888,12 +1427,18 @@ export default function CanvasPage() {
      * Handle mouse down - start drawing
      */
     const handleMouseDown = (e) => {
-        if (tool === 'select') {
+        const activeTool = resolveToolForMode(tool, workspaceMode);
+
+        if (activeTool === 'select') {
             const clickedOnEmpty = e.target === e.target.getStage();
             if (clickedOnEmpty) {
                 setSelectedId(null);
                 setSelectedIds([]);
             }
+            return;
+        }
+
+        if (activeTool === 'pan') {
             return;
         }
 
@@ -904,10 +1449,36 @@ export default function CanvasPage() {
             y: (point.y - stagePos.y) / stageScale,
         };
 
-        if (tool === 'pen' || tool === 'eraser') {
+        if (activeTool === 'pen' || activeTool === 'eraser') {
             setIsDrawing(true);
             setCurrentPoints([adjustedPoint.x, adjustedPoint.y]);
-        } else if (tool === 'text') {
+        } else if (activeTool === 'connect' || (workspaceMode === 'flowchart' && activeTool === 'arrow')) {
+            if (workspaceMode === 'flowchart') {
+                const startAnchor = getNearestFlowAnchor(adjustedPoint.x, adjustedPoint.y);
+                if (!startAnchor) {
+                    setIsDrawing(false);
+                    setCurrentPoints([]);
+                    setFlowConnectStart(null);
+                    setFlowConnectHoverAnchor(null);
+                    return;
+                }
+
+                setIsDrawing(true);
+                setFlowConnectStart({
+                    nodeId: startAnchor.node.id,
+                    side: startAnchor.side,
+                    x: startAnchor.point.x,
+                    y: startAnchor.point.y,
+                });
+                setFlowConnectHoverAnchor(startAnchor);
+                setHoveredFlowNodeId(startAnchor.node.id);
+                setCurrentPoints([startAnchor.point.x, startAnchor.point.y, startAnchor.point.x, startAnchor.point.y]);
+                return;
+            }
+
+            setIsDrawing(true);
+            setCurrentPoints([adjustedPoint.x, adjustedPoint.y]);
+        } else if (activeTool === 'text') {
             // Only create new text if clicking on empty space (stage background)
             const clickedOnEmpty = e.target === e.target.getStage();
             if (!clickedOnEmpty) {
@@ -937,6 +1508,8 @@ export default function CanvasPage() {
      * Handle mouse move - continue drawing
      */
     const handleMouseMove = (e) => {
+        const activeTool = resolveToolForMode(tool, workspaceMode);
+
         // Broadcast cursor position to other users (runs even when not drawing)
         const stage = e.target.getStage();
         const pointer = stage.getPointerPosition();
@@ -956,11 +1529,19 @@ export default function CanvasPage() {
             y: (point.y - stagePos.y) / stageScale,
         };
 
-        if (tool === 'pen' || tool === 'eraser') {
+        if ((activeTool === 'connect' || activeTool === 'arrow') && workspaceMode === 'flowchart' && flowConnectStart) {
+            const endAnchor = getNearestFlowAnchor(adjustedPoint.x, adjustedPoint.y, flowConnectStart.nodeId);
+            const targetPoint = endAnchor?.point || adjustedPoint;
+            setFlowConnectHoverAnchor(endAnchor);
+            setCurrentPoints([flowConnectStart.x, flowConnectStart.y, targetPoint.x, targetPoint.y]);
+            return;
+        }
+
+        if (activeTool === 'pen' || activeTool === 'eraser') {
             setCurrentPoints([...currentPoints, adjustedPoint.x, adjustedPoint.y]);
 
             // For eraser, split strokes at intersection points
-            if (tool === 'eraser' && currentPoints.length >= 2) {
+            if (activeTool === 'eraser' && currentPoints.length >= 2) {
                 const eraserRadius = strokeWidth * 3;
                 const newElements = [];
                 let segmentCounter = 0;
@@ -1022,6 +1603,9 @@ export default function CanvasPage() {
      * Handle mouse up - finish drawing
      */
     const handleMouseUp = () => {
+        const activeTool = resolveToolForMode(tool, workspaceMode);
+        const activeFlowShape = getFlowchartShapeDef(tool);
+
         if (!isDrawing) return;
         setIsDrawing(false);
 
@@ -1030,7 +1614,7 @@ export default function CanvasPage() {
             return;
         }
 
-        if (tool === 'pen') {
+        if (activeTool === 'pen') {
             const newLine = {
                 id: Date.now(),
                 type: 'pen',
@@ -1039,14 +1623,26 @@ export default function CanvasPage() {
                 strokeWidth: strokeWidth,
             };
             saveToHistory([...elements, newLine]);
-        } else if (tool === 'eraser') {
+        } else if (activeTool === 'eraser') {
             // Save the erased state to history
             saveToHistory(elements);
-        } else if (tool !== 'select' && tool !== 'text') {
+        } else if ((activeTool === 'connect' || activeTool === 'arrow') && workspaceMode === 'flowchart') {
+            const startInfo = flowConnectStart;
+            const [, , endX, endY] = currentPoints;
+
+            if (startInfo) {
+                const endAnchor = getNearestFlowAnchor(endX, endY, startInfo.nodeId);
+                if (endAnchor) createFlowConnectorFromAnchors(startInfo, endAnchor);
+            }
+
+            setFlowConnectStart(null);
+            setFlowConnectHoverAnchor(null);
+        } else if (activeTool !== 'select' && activeTool !== 'text' && activeTool !== 'pan') {
             const [x1, y1, x2, y2] = currentPoints;
+            const shapeType = activeTool === 'connect' ? 'arrow' : activeTool;
             const newShape = {
                 id: Date.now(),
-                type: tool,
+                type: shapeType,
                 x: Math.min(x1, x2),
                 y: Math.min(y1, y2),
                 width: Math.abs(x2 - x1),
@@ -1055,11 +1651,71 @@ export default function CanvasPage() {
                 stroke: strokeColor,
                 strokeWidth: strokeWidth,
             };
+
+            if (workspaceMode === 'flowchart') {
+                if (activeFlowShape) {
+                    newShape.fill = activeFlowShape.fill;
+                    newShape.stroke = activeFlowShape.stroke;
+                    newShape.flowNodeType = activeFlowShape.id;
+                    newShape.text = activeFlowShape.label;
+                    newShape.fontSize = 13;
+                    newShape.textColor = '#1e293b';
+                    newShape.textAlign = 'center';
+
+                    if (activeFlowShape.id === 'fc-terminal' || activeFlowShape.id === 'fc-delay') {
+                        newShape.cornerRadius = Math.max(8, Math.min(newShape.width, newShape.height) / 2);
+                    }
+                }
+
+                if (shapeType === 'line' || shapeType === 'arrow') {
+                    newShape.dash = flowConnectorStyle === 'dashed' ? [10, 6] : undefined;
+                    newShape.tension = flowConnectorCurved ? 0.4 : 0;
+                }
+            }
+
             saveToHistory([...elements, newShape]);
         }
 
         setCurrentPoints([]);
     };
+
+    const handleFlowchartShapeDrop = useCallback((e) => {
+        if (workspaceMode !== 'flowchart' || !draggingFlowShapeId || !stageRef.current) return;
+
+        e.preventDefault();
+        const shapeDef = getFlowchartShapeDef(draggingFlowShapeId);
+        setDraggingFlowShapeId(null);
+        if (!shapeDef) return;
+
+        const stageRect = stageRef.current.container().getBoundingClientRect();
+        const x = (e.clientX - stageRect.left - stagePos.x) / stageScale;
+        const y = (e.clientY - stageRect.top - stagePos.y) / stageScale;
+
+        const newShape = {
+            id: Date.now(),
+            type: shapeDef.shapeType,
+            x: x - (shapeDef.w / 2),
+            y: y - (shapeDef.h / 2),
+            width: shapeDef.w,
+            height: shapeDef.h,
+            fill: shapeDef.fill,
+            stroke: shapeDef.stroke,
+            strokeWidth: strokeWidth,
+            flowNodeType: shapeDef.id,
+            text: shapeDef.label,
+            fontSize: 13,
+            textColor: '#1e293b',
+            textAlign: 'center',
+        };
+
+        if (shapeDef.id === 'fc-terminal' || shapeDef.id === 'fc-delay') {
+            newShape.cornerRadius = Math.max(8, Math.min(newShape.width, newShape.height) / 2);
+        }
+
+        saveToHistory([...elements, newShape]);
+        setFlowConnectStart(null);
+        setTool('select');
+    }, [workspaceMode, draggingFlowShapeId, stagePos.x, stagePos.y, stageScale, strokeWidth, saveToHistory, elements]);
 
     /**
      * Handle wheel - zoom in/out
@@ -1128,7 +1784,7 @@ export default function CanvasPage() {
      */
     const deleteSelected = () => {
         if (!selectedId) return;
-        const newElements = elements.filter(el => el.id !== selectedId);
+        const newElements = removeElementAndLinkedConnectors(elements, selectedId);
         saveToHistory(newElements);
         setSelectedId(null);
     };
@@ -1239,12 +1895,29 @@ export default function CanvasPage() {
         const isSelected = shape.id === selectedId || selectedIds.includes(shape.id);
         const isLocked = shape.locked === true;
 
+        const editFlowNodeLabel = () => {
+            if (!FLOWCHART_NODE_TYPES.has(shape.type)) return;
+
+            const currentLabel = typeof shape.text === 'string'
+                ? shape.text
+                : (getFlowchartShapeDef(shape.flowNodeType)?.label || '');
+            const nextLabel = window.prompt('Edit flowchart label', currentLabel);
+            if (nextLabel === null) return;
+
+            const updated = elements.map((el) =>
+                el.id === shape.id
+                    ? { ...el, text: nextLabel }
+                    : el
+            );
+            saveToHistory(updated);
+        };
+
         const commonProps = {
             id: `shape-${shape.id}`,
             opacity: shape.opacity ?? 1,
             onClick: (e) => {
                 // Allow selection with select tool or text tool (for text elements)
-                if ((tool === 'select' || tool === 'text') && !isLocked) {
+                if ((activeCanvasTool === 'select' || activeCanvasTool === 'text') && !isLocked) {
                     const isShiftPressed = e.evt?.shiftKey;
 
                     if (isShiftPressed) {
@@ -1265,10 +1938,20 @@ export default function CanvasPage() {
                     }
 
                     // Auto-switch to select tool after clicking an element
-                    if (tool === 'text') setTool('select');
+                    if (activeCanvasTool === 'text') setTool('select');
                 }
             },
-            draggable: tool === 'select' && !isLocked,
+            onMouseEnter: () => {
+                if (workspaceMode === 'flowchart' && FLOWCHART_NODE_TYPES.has(shape.type)) {
+                    setHoveredFlowNodeId(shape.id);
+                }
+            },
+            onMouseLeave: () => {
+                if (hoveredFlowNodeId === shape.id) {
+                    setHoveredFlowNodeId(null);
+                }
+            },
+            draggable: activeCanvasTool === 'select' && !isLocked && !shape.flowConnector,
             onDragEnd: (e) => {
                 if (isLocked) return;
                 let newPos = { x: e.target.x(), y: e.target.y() };
@@ -1284,9 +1967,22 @@ export default function CanvasPage() {
                         : el
                 ));
             },
+            onDblClick: (e) => {
+                // Double-click = select the shape and show its properties panel
+                e.cancelBubble = true;
+                if (!FLOWCHART_NODE_TYPES.has(shape.type)) return;
+                setSelectedId(shape.id);
+                setActiveCanvasTool('select');
+            },
+            onDblTap: (e) => {
+                e.cancelBubble = true;
+                if (!FLOWCHART_NODE_TYPES.has(shape.type)) return;
+                setSelectedId(shape.id);
+                setActiveCanvasTool('select');
+            },
             stroke: isSelected ? '#8b3dff' : (shape.stroke || (shape.type === 'text' ? undefined : strokeColor)),
             strokeWidth: isSelected ? (shape.strokeWidth || strokeWidth) + 2 : (shape.type === 'text' && !shape.stroke ? undefined : (shape.strokeWidth || strokeWidth)),
-            dash: isSelected ? [5, 5] : undefined,
+            dash: isSelected ? [5, 5] : (shape.dash || undefined),
             // Shadow properties
             shadowColor: shape.shadowColor || 'transparent',
             shadowBlur: shape.shadowBlur || 0,
@@ -1393,12 +2089,32 @@ export default function CanvasPage() {
                 );
 
             case 'arrow':
-                if (shape.width && shape.height) {
+                if (shape.flowConnector) {
+                    const connectorPoints = getConnectorPointsForShape(shape);
+                    if (!connectorPoints) return null;
+                    const connectorDash = shape.connectorStyle === 'dashed' ? [10, 6] : undefined;
+
+                    return (
+                        <Arrow
+                            key={shape.id}
+                            {...commonProps}
+                            points={connectorPoints}
+                            dash={isSelected ? [5, 5] : connectorDash}
+                            tension={shape.curved ? 0.35 : 0}
+                            fill={shape.fill || shape.stroke || '#64748b'}
+                            pointerLength={20}
+                            pointerWidth={20}
+                        />
+                    );
+                }
+
+                if (shape.width || shape.height) {
                     return (
                         <Arrow
                             key={shape.id}
                             {...commonProps}
                             points={[shape.x, shape.y, shape.x + shape.width, shape.y + shape.height]}
+                            tension={shape.tension || 0}
                             fill={shape.fill}
                             pointerLength={20}
                             pointerWidth={20}
@@ -1414,10 +2130,128 @@ export default function CanvasPage() {
                             key={shape.id}
                             {...commonProps}
                             points={[shape.x, shape.y, shape.x + shape.width, shape.y + shape.height]}
+                            tension={shape.tension || 0}
                         />
                     );
                 }
                 return null;
+
+            case 'diamond':
+                return (
+                    <Line
+                        key={shape.id}
+                        {...commonProps}
+                        x={shape.x}
+                        y={shape.y}
+                        points={[
+                            shape.width / 2, 0,
+                            shape.width,      shape.height / 2,
+                            shape.width / 2,  shape.height,
+                            0,                shape.height / 2,
+                        ]}
+                        fill={shape.fill}
+                        closed={true}
+                    />
+                );
+
+            case 'parallelogram':
+                return (
+                    <Line
+                        key={shape.id}
+                        {...commonProps}
+                        points={[
+                            shape.width * 0.25, 0,
+                            shape.width, 0,
+                            shape.width * 0.75, shape.height,
+                            0, shape.height
+                        ]}
+                        x={shape.x}
+                        y={shape.y}
+                        fill={shape.fill}
+                        closed={true}
+                    />
+                );
+
+            case 'cylinder':
+                return (
+                    <Group key={shape.id} x={shape.x} y={shape.y} {...commonProps}>
+                        <Rect
+                            x={0}
+                            y={shape.height * 0.1}
+                            width={shape.width}
+                            height={shape.height * 0.8}
+                            fill={shape.fill}
+                            stroke={shape.stroke}
+                            strokeWidth={shape.strokeWidth}
+                        />
+                        <Ellipse
+                            x={shape.width / 2}
+                            y={shape.height * 0.1}
+                            radiusX={shape.width / 2}
+                            radiusY={shape.height * 0.1}
+                            fill={shape.fill}
+                            stroke={shape.stroke}
+                            strokeWidth={shape.strokeWidth}
+                        />
+                        <Ellipse
+                            x={shape.width / 2}
+                            y={shape.height * 0.9}
+                            radiusX={shape.width / 2}
+                            radiusY={shape.height * 0.1}
+                            fill={shape.fill}
+                            stroke={shape.stroke}
+                            strokeWidth={shape.strokeWidth}
+                        />
+                    </Group>
+                );
+
+            case 'actor':
+                return (
+                    <Group key={shape.id} x={shape.x} y={shape.y} {...commonProps}>
+                        <Circle
+                            x={shape.width / 2}
+                            y={shape.height * 0.2}
+                            radius={shape.height * 0.15}
+                            fill={shape.fill}
+                        />
+                        <Line
+                            points={[shape.width / 2, shape.height * 0.35, shape.width / 2, shape.height * 0.7]}
+                        />
+                        <Line
+                            points={[shape.width * 0.2, shape.height * 0.5, shape.width * 0.8, shape.height * 0.5]}
+                        />
+                        <Line
+                            points={[shape.width / 2, shape.height * 0.7, shape.width * 0.3, shape.height * 0.95]}
+                        />
+                        <Line
+                            points={[shape.width / 2, shape.height * 0.7, shape.width * 0.7, shape.height * 0.95]}
+                        />
+                    </Group>
+                );
+
+            case 'note':
+                return (
+                    <Group key={shape.id} x={shape.x} y={shape.y} {...commonProps}>
+                        <Line
+                            points={[
+                                0, 0,
+                                shape.width * 0.8, 0,
+                                shape.width, shape.height * 0.2,
+                                shape.width, shape.height,
+                                0, shape.height
+                            ]}
+                            fill={shape.fill}
+                            closed={true}
+                        />
+                        <Line
+                            points={[
+                                shape.width * 0.8, 0,
+                                shape.width * 0.8, shape.height * 0.2,
+                                shape.width, shape.height * 0.2
+                            ]}
+                        />
+                    </Group>
+                );
 
             case 'text':
                 return (
@@ -1460,7 +2294,7 @@ export default function CanvasPage() {
         }
     };
 
-    const tools = [
+    const drawingTools = [
         { id: 'select', icon: MousePointer2, label: 'Select' },
         { id: 'pen', icon: Pencil, label: 'Pen' },
         { id: 'eraser', icon: Eraser, label: 'Eraser' },
@@ -1468,18 +2302,70 @@ export default function CanvasPage() {
         { id: 'image', icon: ImageIcon, label: 'Image' },
     ];
 
-    const shapes = [
+    const flowchartTools = [
+        { id: 'select', icon: '↖', label: 'Select' },
+        { id: 'connect', icon: '⟶', label: 'Connect' },
+        { id: 'pan', icon: '✋', label: 'Pan' },
+    ];
+
+    const posterTools = [
+        { id: 'select', icon: MousePointer2, label: 'Select' },
+        { id: 'text', icon: Type, label: 'Heading' },
+        { id: 'image', icon: ImageIcon, label: 'Image' },
+    ];
+
+    const drawingShapes = [
         { id: 'rectangle', icon: Square, label: 'Rectangle' },
         { id: 'circle', icon: CircleIcon, label: 'Circle' },
         { id: 'triangle', icon: Triangle, label: 'Triangle' },
         { id: 'star', icon: StarIcon, label: 'Star' },
-        { id: 'arrow', icon: ArrowRight, label: 'Arrow' },
-        { id: 'line', icon: Minus, label: 'Line' },
         { id: 'hexagon', icon: Hexagon, label: 'Hexagon' },
         { id: 'pentagon', icon: Pentagon, label: 'Pentagon' },
+        { id: 'arrow', icon: ArrowRight, label: 'Arrow' },
+        { id: 'line', icon: Minus, label: 'Line' },
     ];
 
+    const flowchartShapes = FLOWCHART_SHAPE_DEFS;
+
+    const tools = workspaceMode === 'flowchart' ? flowchartTools : (workspaceMode === 'poster' ? posterTools : drawingTools);
+    const shapes = workspaceMode === 'flowchart' ? flowchartShapes : (workspaceMode === 'poster' ? drawingShapes : drawingShapes);
+
+
     const selectedElement = elements.find(el => el.id === selectedId);
+    const activeFlowShapeDef = workspaceMode === 'flowchart' ? getFlowchartShapeDef(tool) : null;
+    const activeCanvasTool = resolveToolForMode(tool, workspaceMode);
+    const previewFill = activeFlowShapeDef?.fill || fillColor;
+    const previewStroke = activeFlowShapeDef?.stroke || strokeColor;
+    const showFlowOrthogonalPreview = (
+        workspaceMode === 'flowchart' &&
+        (activeCanvasTool === 'connect' || activeCanvasTool === 'arrow') &&
+        Boolean(flowConnectStart) &&
+        isDrawing &&
+        currentPoints.length === 4
+    );
+    const flowPreviewConnectorPoints = showFlowOrthogonalPreview
+        ? (() => {
+            const [sx, sy, ex, ey] = currentPoints;
+            const fromPoint = { x: sx, y: sy };
+            const fromSide = flowConnectStart.side || 'right';
+
+            const anchor = flowConnectHoverAnchor;
+            const toPoint = anchor?.point || { x: ex, y: ey };
+
+            let toSide = anchor?.side;
+            if (!toSide) {
+                const dx = toPoint.x - fromPoint.x;
+                const dy = toPoint.y - fromPoint.y;
+                if (Math.abs(dx) >= Math.abs(dy)) {
+                    toSide = dx >= 0 ? 'left' : 'right';
+                } else {
+                    toSide = dy >= 0 ? 'top' : 'bottom';
+                }
+            }
+
+            return buildOrthogonalConnectorPath(fromPoint, fromSide, toPoint, toSide);
+        })()
+        : null;
 
     if (loading) {
         return (
@@ -1514,7 +2400,34 @@ export default function CanvasPage() {
     return (
         <div className="flex h-screen w-full overflow-hidden bg-[var(--color-bg-base)]">
             {/* Left Workspace Sidebar */}
-            <Sidebar currentMode={workspaceMode} onModeChange={setWorkspaceMode} />
+            <Sidebar
+                currentMode={workspaceMode}
+                onModeChange={(mode) => {
+                    if (mode === workspaceMode) {
+                        setIsToolbarVisible(!isToolbarVisible);
+                    } else {
+                        setWorkspaceMode(mode);
+                        setIsToolbarVisible(true);
+                        setCurrentPoints([]);
+                        setIsDrawing(false);
+                        setSelectedId(null);
+                        setSelectedIds([]);
+                        setTool(mode === 'drawing' ? 'pen' : 'select');
+                    }
+                }}
+            />
+
+            <CollaborationPanel
+                isOpen={showSharePanel}
+                onClose={() => setShowSharePanel(false)}
+                isShared={isShared}
+                onToggleShare={toggleShare}
+                shareKey={shareKey}
+                onGenerateKey={generateShareKey}
+                activeUsers={activeUsers}
+                ownerUid={canvasOwnerRef.current}
+                currentUserUid={user?.uid}
+            />
 
             <div className="flex-1 flex flex-col h-full overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100 relative">
                 <input
@@ -1524,930 +2437,1580 @@ export default function CanvasPage() {
                     style={{ display: 'none' }}
                     accept="image/*"
                 />
-                {/* Header */}
-                <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6 shadow-sm">
-                    <div className="flex items-center gap-3">
+                {/* Header - Zinc frosted glass */}
+                <header className="h-16 bg-zinc-50/80 backdrop-blur-md border-b border-zinc-200/50 flex items-center justify-between px-8 z-40 sticky top-0 shadow-sm transition-all duration-300">
+                    <div className="flex items-center gap-4">
                         {/* Back button */}
                         <button
                             onClick={() => router.push('/dashboard')}
-                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                            className="p-2.5 hover:bg-gray-100/80 rounded-xl transition-all duration-200 text-gray-400 hover:text-gray-900 border border-transparent hover:border-gray-200"
                             title="Back to Dashboard"
                         >
-                            <ArrowLeft size={20} className="text-gray-600" />
+                            <ArrowLeft size={18} />
                         </button>
 
-                        <div className="h-6 w-px bg-gray-300" />
+                        <div className="h-4 w-px bg-gray-200 mx-1" />
 
-                        <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-gradient-to-br from-purple-600 to-indigo-600 rounded-lg flex items-center justify-center">
-                                <span className="text-white font-bold text-sm">P</span>
+                        <div className="flex items-center gap-3 group">
+                            <div className="w-10 h-10 bg-gradient-to-tr from-purple-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-purple-500/20 group-hover:scale-105 transition-transform duration-300">
+                                <span className="text-white font-black text-sm tracking-tighter">P</span>
                             </div>
 
-                            {/* Editable Title */}
-                            {isEditingTitle ? (
-                                <input
-                                    ref={titleInputRef}
-                                    type="text"
-                                    value={canvasTitle}
-                                    onChange={(e) => setCanvasTitle(e.target.value)}
-                                    onBlur={handleTitleSubmit}
-                                    onKeyDown={handleTitleKeyDown}
-                                    className="font-bold text-lg tracking-tight text-gray-900 bg-gray-100 px-2 py-1 rounded border border-purple-300 outline-none focus:border-purple-500"
-                                    style={{ minWidth: '150px' }}
-                                />
-                            ) : (
-                                <button
-                                    onClick={() => setIsEditingTitle(true)}
-                                    className="font-bold text-lg tracking-tight text-gray-900 hover:bg-gray-100 px-2 py-1 rounded transition-colors"
-                                    title="Click to edit title"
-                                >
-                                    {canvasTitle}
-                                </button>
-                            )}
-                        </div>
-
-                        {/* Save status */}
-                        <div className="flex items-center gap-2 ml-4">
-                            {saving ? (
-                                <span className="text-xs text-gray-400 flex items-center gap-1">
-                                    <Save size={12} className="animate-pulse" />
-                                    Saving...
-                                </span>
-                            ) : lastSaved ? (
-                                <span className="text-xs text-green-600 flex items-center gap-1">
-                                    <Check size={12} />
-                                    Saved
-                                </span>
-                            ) : null}
-                        </div>
-                    </div>
-
-                    {/* Collaborator avatars + Share button */}
-                    <div className="flex items-center gap-3">
-                        {/* Stacked avatars of online users */}
-                        {activeUsers.length > 1 && (
-                            <div className="flex -space-x-2">
-                                {activeUsers
-                                    .filter(u => u.uid !== user?.uid)
-                                    .slice(0, 4)
-                                    .map(u => (
-                                        <div
-                                            key={u.uid}
-                                            className="w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-white text-[10px] font-bold shadow-sm"
-                                            style={{ backgroundColor: u.color }}
-                                            title={u.displayName}
+                            <div className="flex flex-col">
+                                {/* Editable Title */}
+                                {isEditingTitle ? (
+                                    <input
+                                        ref={titleInputRef}
+                                        type="text"
+                                        value={canvasTitle}
+                                        onChange={(e) => setCanvasTitle(e.target.value)}
+                                        onBlur={handleTitleSubmit}
+                                        onKeyDown={handleTitleKeyDown}
+                                        className="font-bold text-base tracking-tight text-gray-900 bg-gray-50 px-2 py-0.5 rounded-lg border border-purple-300 outline-none focus:ring-2 focus:ring-purple-500/20 transition-all"
+                                        style={{ minWidth: '150px' }}
+                                    />
+                                ) : (
+                                    <div className="flex items-center gap-1.5">
+                                        <h1
+                                            onClick={() => setIsEditingTitle(true)}
+                                            className="font-bold text-base tracking-tight text-gray-900 cursor-pointer hover:text-purple-600 transition-colors"
                                         >
-                                            {(u.displayName || '?')[0].toUpperCase()}
-                                        </div>
-                                    ))}
-                                {activeUsers.filter(u => u.uid !== user?.uid).length > 4 && (
-                                    <div className="w-7 h-7 rounded-full border-2 border-white bg-gray-400 flex items-center justify-center text-white text-[10px] font-bold">
-                                        +{activeUsers.filter(u => u.uid !== user?.uid).length - 4}
+                                            {canvasTitle}
+                                        </h1>
+                                        <button
+                                            onClick={() => setIsEditingTitle(true)}
+                                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-gray-400 hover:text-purple-600"
+                                        >
+                                            <Pencil size={12} />
+                                        </button>
                                     </div>
                                 )}
-                            </div>
-                        )}
 
-                        {/* Share button */}
-                        <button
-                            onClick={() => setShowSharePanel(true)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-semibold rounded-lg hover:from-purple-700 hover:to-indigo-700 shadow-md shadow-purple-500/20 transition-all"
-                            title="Share canvas"
-                        >
-                            Share
-                        </button>
+                                {/* Save status indicator */}
+                                <div className="flex items-center gap-2 h-4">
+                                    {saving ? (
+                                        <div className="flex items-center gap-1.5 no-select">
+                                            <div className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse" />
+                                            <span className="text-[10px] font-bold text-amber-600/70 uppercase tracking-widest">Synchronizing</span>
+                                        </div>
+                                    ) : lastSaved ? (
+                                        <div className="flex items-center gap-1.5 no-select">
+                                            <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full shadow-[0_0_5px_rgba(16,185,129,0.5)]" />
+                                            <span className="text-[10px] font-bold text-emerald-600/70 uppercase tracking-widest">All changes saved</span>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-1.5 no-select opacity-50">
+                                            <div className="w-1.5 h-1.5 bg-gray-300 rounded-full" />
+                                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Waiting for changes</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
-                    {/* Undo/Redo and Zoom controls */}
-                    <div className="flex items-center gap-2">
-                        {/* Manual Save */}
-                        <button
-                            onClick={() => saveCanvas(elements, canvasTitle)}
-                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors mr-2"
-                            title="Save (Ctrl+S)"
-                        >
-                            <Save size={18} className="text-gray-600" />
-                        </button>
+                    <div className="flex items-center gap-6">
+                        {/* Collaborator avatars + Share button */}
+                        <div className="flex items-center gap-4 bg-gray-50 border border-gray-100 px-4 py-1.5 rounded-2xl shadow-inner-sm">
+                            {activeUsers.length > 1 && (
+                                <div className="flex -space-x-2.5">
+                                    {activeUsers
+                                        .filter(u => u.uid !== user?.uid)
+                                        .slice(0, 4)
+                                        .map(u => (
+                                            <div
+                                                key={u.uid}
+                                                className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-white text-[10px] font-black shadow-md ring-1 ring-black/5"
+                                                style={{ backgroundColor: u.color }}
+                                                title={u.displayName}
+                                            >
+                                                {(u.displayName || '?')[0].toUpperCase()}
+                                            </div>
+                                        ))}
+                                    {activeUsers.filter(u => u.uid !== user?.uid).length > 4 && (
+                                        <div className="w-8 h-8 rounded-full border-2 border-white bg-slate-800 flex items-center justify-center text-white text-[10px] font-bold ring-1 ring-black/5">
+                                            +{activeUsers.filter(u => u.uid !== user?.uid).length - 4}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
-                        {/* Undo/Redo */}
-                        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1 mr-2">
+                            {/* Share button */}
                             <button
-                                onClick={undo}
-                                disabled={historyStep === 0}
-                                className={`p-2 rounded transition-colors ${historyStep === 0
-                                    ? 'text-gray-300 cursor-not-allowed'
-                                    : 'hover:bg-white text-gray-700'
-                                    }`}
-                                title="Undo (Ctrl+Z)"
+                                onClick={() => setShowSharePanel(true)}
+                                className="flex items-center gap-2 pl-2 text-purple-600 hover:text-purple-700 transition-colors"
                             >
-                                <Undo size={16} />
-                            </button>
-                            <button
-                                onClick={redo}
-                                disabled={historyStep >= history.length - 1}
-                                className={`p-2 rounded transition-colors ${historyStep >= history.length - 1
-                                    ? 'text-gray-300 cursor-not-allowed'
-                                    : 'hover:bg-white text-gray-700'
-                                    }`}
-                                title="Redo (Ctrl+Y)"
-                            >
-                                <Redo size={16} />
+                                <div className="p-1 bg-[#8b3dff]/10 rounded-lg group-hover:bg-[#8b3dff]/20 transition-colors">
+                                    <Zap size={14} className="fill-purple-600" />
+                                </div>
+                                <span className="text-xs font-bold uppercase tracking-wider">Share</span>
                             </button>
                         </div>
 
-                        {/* Zoom */}
-                        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-                            <button
-                                onClick={zoomOut}
-                                className="p-2 hover:bg-white rounded transition-colors"
-                                title="Zoom Out"
-                            >
-                                <ZoomOut size={16} className="text-gray-700" />
-                            </button>
-                            <span className="px-3 text-sm font-medium text-gray-700 min-w-[60px] text-center">
-                                {Math.round(stageScale * 100)}%
-                            </span>
-                            <button
-                                onClick={zoomIn}
-                                className="p-2 hover:bg-white rounded transition-colors"
-                                title="Zoom In"
-                            >
-                                <ZoomIn size={16} className="text-gray-700" />
-                            </button>
-                            <button
-                                onClick={resetZoom}
-                                className="p-2 hover:bg-white rounded transition-colors ml-1"
-                                title="Reset Zoom"
-                            >
-                                <Maximize2 size={16} className="text-gray-700" />
-                            </button>
+                        {/* Controls Group */}
+                        <div className="flex items-center gap-4">
+                            {/* Undo/Redo */}
+                            <div className="flex items-center gap-1 bg-gray-50 border border-gray-100 rounded-xl p-1 shadow-inner-sm">
+                                <button
+                                    onClick={undo}
+                                    disabled={historyStep === 0}
+                                    className={`p-2 rounded-lg transition-all duration-200 ${historyStep === 0
+                                        ? 'text-gray-200'
+                                        : 'hover:bg-zinc-100/80 text-gray-600 hover:text-purple-600 hover:shadow-sm'
+                                        }`}
+                                    title="Undo (Ctrl+Z)"
+                                >
+                                    <Undo size={16} />
+                                </button>
+                                <button
+                                    onClick={redo}
+                                    disabled={historyStep >= history.length - 1}
+                                    className={`p-2 rounded-lg transition-all duration-200 ${historyStep >= history.length - 1
+                                        ? 'text-gray-200'
+                                        : 'hover:bg-zinc-100/80 text-gray-600 hover:text-purple-600 hover:shadow-sm'
+                                        }`}
+                                    title="Redo (Ctrl+Y)"
+                                >
+                                    <Redo size={16} />
+                                </button>
+                            </div>
+
+                            {/* Zoom Controls */}
+                            <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-100 rounded-xl p-1 shadow-inner-sm">
+                                <button
+                                    onClick={zoomOut}
+                                    className="p-2 hover:bg-zinc-100/80 text-gray-500 hover:text-gray-900 rounded-lg transition-all hover:shadow-sm"
+                                    title="Zoom Out"
+                                >
+                                    <ZoomOut size={16} />
+                                </button>
+                                <div className="h-4 w-px bg-gray-200 mx-1" />
+                                <span className="px-2 text-[11px] font-black text-gray-400 min-w-[50px] text-center tracking-tighter">
+                                    {Math.round(stageScale * 100)}%
+                                </span>
+                                <div className="h-4 w-px bg-gray-200 mx-1" />
+                                <button
+                                    onClick={zoomIn}
+                                    className="p-2 hover:bg-zinc-100/80 text-gray-500 hover:text-gray-900 rounded-lg transition-all hover:shadow-sm"
+                                    title="Zoom In"
+                                >
+                                    <ZoomIn size={16} />
+                                </button>
+                                <button
+                                    onClick={resetZoom}
+                                    className="p-2 hover:bg-white text-gray-500 hover:text-gray-900 rounded-lg transition-all hover:shadow-sm ml-0.5"
+                                    title="Reset Zoom"
+                                >
+                                    <Maximize2 size={16} />
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </header>
 
-                {/* Main Workspace Area - Conditional based on mode */}
-                {workspaceMode === 'drawing' ? (
-                    <div className="flex flex-1 overflow-hidden">
-                        {/* Toolbar */}
-                        <div className="w-[200px] bg-white border-r border-gray-200 p-4 overflow-y-auto shadow-sm">
-                            <div className="mb-6">
-                                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
-                                    Tools
-                                </h3>
-                                <div className="grid grid-cols-2 gap-2">
-                                    {tools.map((t) => {
-                                        const Icon = t.icon;
-                                        const isActive = tool === t.id;
-                                        return (
-                                            <button
-                                                key={t.id}
-                                                onClick={() => {
-                                                    if (t.id === 'image') {
-                                                        fileInputRef.current?.click();
-                                                    } else {
+                {/* Main Workspace Area */}
+                <div className="flex flex-1 overflow-hidden">
+
+                    {/* Toolbar - Zinc frosted glass */}
+                    <div className={`h-[calc(100%-32px)] my-4 ml-4 bg-zinc-50/90 backdrop-blur-xl border border-zinc-200/50 overflow-y-auto shadow-2xl transition-all duration-300 ease-in-out flex flex-col rounded-2xl z-20 custom-scrollbar ${isToolbarVisible
+                        ? 'w-60 opacity-100 p-5'
+                        : 'w-0 opacity-0 p-0 border-0 overflow-hidden'
+                        }`}>
+
+                        {workspaceMode === 'flowchart' ? (
+                            <>
+                                <div className="mb-4">
+                                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 px-1">Tools</p>
+                                    <div className="grid grid-cols-3 gap-1.5">
+                                        {tools.map((t) => {
+                                            const isActive = tool === t.id;
+                                            return (
+                                                <button
+                                                    key={t.id}
+                                                    onClick={() => {
                                                         setTool(t.id);
-                                                    }
-                                                }}
-                                                className={`flex flex-col items-center justify-center p-3 rounded-xl transition-all ${isActive
-                                                    ? 'bg-gradient-to-br from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/30'
-                                                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
-                                                    }`}
-                                            >
-                                                <Icon size={20} />
-                                                <span className="text-[9px] font-medium mt-1">{t.label}</span>
-                                            </button>
-                                        );
-                                    })}
+                                                        setCurrentPoints([]);
+                                                        setIsDrawing(false);
+                                                        setFlowConnectStart(null);
+                                                        if (t.id === 'connect') {
+                                                            setStrokeColor('#64748b');
+                                                        }
+                                                    }}
+                                                    title={t.label}
+                                                    className={`flex flex-col items-center justify-center py-2.5 rounded-xl text-[10px] font-semibold gap-1 transition-all border ${isActive
+                                                        ? 'bg-indigo-600 text-white border-indigo-700 shadow-md'
+                                                        : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+                                                        }`}
+                                                >
+                                                    <span className="text-base leading-none font-bold">{t.icon}</span>
+                                                    {t.label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div className="mb-6">
-                                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
-                                    Shapes
-                                </h3>
-                                <div className="grid grid-cols-2 gap-2">
-                                    {shapes.map((s) => {
-                                        const Icon = s.icon;
-                                        const isActive = tool === s.id;
+                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 px-1">Shapes</p>
+                                <div className="space-y-1">
+                                    {shapes.map((shapeDef) => {
+                                        const isActive = tool === shapeDef.id;
                                         return (
                                             <button
-                                                key={s.id}
-                                                onClick={() => setTool(s.id)}
-                                                className={`flex flex-col items-center justify-center p-3 rounded-xl transition-all ${isActive
-                                                    ? 'bg-gradient-to-br from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/30'
-                                                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
+                                                key={shapeDef.id}
+                                                draggable
+                                                onDragStart={() => setDraggingFlowShapeId(shapeDef.id)}
+                                                onDragEnd={() => setDraggingFlowShapeId(null)}
+                                                onClick={() => {
+                                                    setTool(shapeDef.id);
+                                                    setIsDrawing(false);
+                                                    setCurrentPoints([]);
+                                                    setFlowConnectStart(null);
+                                                    setFillColor(shapeDef.fill);
+                                                    setStrokeColor(shapeDef.stroke);
+                                                }}
+                                                className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg border cursor-pointer transition-colors text-left ${isActive
+                                                    ? 'bg-indigo-50 border-indigo-300'
+                                                    : 'bg-gray-50 border-gray-200 hover:bg-indigo-50 hover:border-indigo-300'
                                                     }`}
                                             >
-                                                <Icon size={20} />
-                                                <span className="text-[9px] font-medium mt-1">{s.label}</span>
+                                                <span
+                                                    className="w-7 h-7 flex items-center justify-center rounded text-[10px] font-bold shrink-0"
+                                                    style={{ background: shapeDef.fill, color: shapeDef.stroke, border: `1.5px solid ${shapeDef.stroke}` }}
+                                                >
+                                                    {shapeDef.icon}
+                                                </span>
+                                                <span className={`text-xs font-medium ${isActive ? 'text-indigo-700' : 'text-gray-700'}`}>{shapeDef.label}</span>
                                             </button>
                                         );
                                     })}
                                 </div>
-                            </div>
 
-                            <div className="pt-4 border-t border-gray-200">
-                                <button
-                                    onClick={clearCanvas}
-                                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 text-red-600 rounded-xl font-medium text-sm hover:bg-red-100 transition-colors border border-red-200"
-                                >
-                                    <Trash2 size={16} />
-                                    Clear Canvas
-                                </button>
-                            </div>
-                        </div>
+                                <div className="mt-4 pt-3 border-t border-gray-100">
+                                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 px-1">Connector Style</p>
+                                    <div className="grid grid-cols-2 gap-1.5">
+                                        <button
+                                            onClick={() => setFlowConnectorStyle('solid')}
+                                            className={`py-1.5 text-[11px] font-medium rounded-lg border transition-colors ${flowConnectorStyle === 'solid' ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}
+                                        >
+                                            -- Solid
+                                        </button>
+                                        <button
+                                            onClick={() => setFlowConnectorStyle('dashed')}
+                                            className={`py-1.5 text-[11px] font-medium rounded-lg border transition-colors ${flowConnectorStyle === 'dashed' ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}
+                                        >
+                                            - - Dashed
+                                        </button>
+                                    </div>
+                                    <div className="mt-1.5">
+                                        <button
+                                            onClick={() => setFlowConnectorCurved((v) => !v)}
+                                            className={`w-full py-1.5 text-[11px] font-medium rounded-lg border transition-colors ${flowConnectorCurved ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}
+                                        >
+                                            Curved
+                                        </button>
+                                    </div>
+                                </div>
 
-                        {/* Canvas */}
-                        <div className="flex-1 overflow-hidden bg-gray-100">
-                            <Stage
-                                ref={stageRef}
-                                width={CANVAS_WIDTH}
-                                height={CANVAS_HEIGHT}
-                                onMouseDown={handleMouseDown}
-                                onMouseMove={handleMouseMove}
-                                onMouseUp={handleMouseUp}
-                                onWheel={handleWheel}
-                                onDblClick={(e) => {
-                                    // Check if double-click was on a text node
-                                    const target = e.target;
-                                    const id = target.id ? target.id() : '';
-                                    console.log('Stage dblclick, target id:', id);
-                                    if (id && id.startsWith('text-')) {
-                                        const elementId = parseInt(id.replace('text-', ''));
-                                        console.log('Text element double-clicked, id:', elementId);
-                                        handleTextDblClick(elementId);
-                                    }
-                                }}
-                                onDblTap={(e) => {
-                                    // Same for touch devices
-                                    const target = e.target;
-                                    const id = target.id ? target.id() : '';
-                                    if (id && id.startsWith('text-')) {
-                                        const elementId = parseInt(id.replace('text-', ''));
-                                        handleTextDblClick(elementId);
-                                    }
-                                }}
-                                scaleX={stageScale}
-                                scaleY={stageScale}
-                                x={stagePos.x}
-                                y={stagePos.y}
-                                draggable={tool === 'select' && !selectedId}
-                            >
-                                <Layer>
-                                    {/* Background pattern - grid or dots */}
-                                    {(() => {
-                                        const gridSize = 50;
+                                <div className="mt-4 pt-3 border-t border-gray-100 space-y-1.5">
+                                    <div className="grid grid-cols-2 gap-1.5">
+                                        <button
+                                            onClick={exportFlowchartJSON}
+                                            className="w-full flex items-center justify-center gap-1 py-2 text-[11px] font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors"
+                                        >
+                                            <Download size={12} /> JSON
+                                        </button>
+                                        <button
+                                            onClick={importFlowchartJSON}
+                                            className="w-full flex items-center justify-center gap-1 py-2 text-[11px] font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors"
+                                        >
+                                            Import
+                                        </button>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-1.5">
+                                        <button
+                                            onClick={exportAsPNG}
+                                            className="w-full flex items-center justify-center gap-1 py-2 text-[11px] font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors"
+                                        >
+                                            <Download size={12} /> PNG
+                                        </button>
+                                        <button
+                                            onClick={exportFlowchartSVG}
+                                            className="w-full flex items-center justify-center gap-1 py-2 text-[11px] font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors"
+                                        >
+                                            <Download size={12} /> SVG
+                                        </button>
+                                    </div>
+                                    <button
+                                        onClick={autoLayoutFlowchart}
+                                        className="w-full flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors"
+                                    >
+                                        <GitMerge size={13} /> Auto Layout
+                                    </button>
+                                    <button
+                                        onClick={() => setShowFlowchartMiniMap((v) => !v)}
+                                        className="w-full flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors"
+                                    >
+                                        <Map size={13} /> {showFlowchartMiniMap ? 'Hide' : 'Show'} Mini Map
+                                    </button>
+                                    <button
+                                        onClick={clearCanvas}
+                                        className="w-full flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors"
+                                    >
+                                        <Trash2 size={13} /> Clear Canvas
+                                    </button>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div className="mb-8">
+                                    <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4">Canvas Tools</h3>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {tools.map((t) => {
+                                            const Icon = t.icon;
+                                            const isActive = tool === t.id;
+                                            return (
+                                                <button
+                                                    key={t.id}
+                                                    onClick={() => {
+                                                        if (t.id === 'image') {
+                                                            fileInputRef.current?.click();
+                                                        } else {
+                                                            setTool(t.id);
+                                                        }
+                                                    }}
+                                                    className={`flex flex-col items-center justify-center p-3.5 rounded-2xl transition-all duration-300 group ${isActive
+                                                        ? 'bg-gradient-to-br from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/40 transform scale-105'
+                                                        : 'bg-white text-gray-500 hover:text-gray-900 border border-gray-100 hover:border-purple-200 hover:shadow-md'
+                                                        }`}
+                                                >
+                                                    <Icon size={22} className={isActive ? '' : 'opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all'} />
+                                                    <span className={`text-[10px] font-bold mt-2 uppercase tracking-tighter ${isActive ? 'opacity-100' : 'opacity-60 group-hover:opacity-100'}`}>{t.label}</span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
 
-                                        // Calculate visible area in canvas coordinates
-                                        const startX = Math.floor((-stagePos.x / stageScale) / gridSize) * gridSize;
-                                        const startY = Math.floor((-stagePos.y / stageScale) / gridSize) * gridSize;
-                                        const endX = startX + Math.ceil(CANVAS_WIDTH / stageScale) + gridSize;
-                                        const endY = startY + Math.ceil(CANVAS_HEIGHT / stageScale) + gridSize;
+                                <div className="mb-8">
+                                    <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4">Basic Shapes</h3>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {shapes.map((s) => {
+                                            const Icon = s.icon;
+                                            const isActive = tool === s.id;
+                                            return (
+                                                <button
+                                                    key={s.id}
+                                                    onClick={() => setTool(s.id)}
+                                                    className={`flex flex-col items-center justify-center p-3.5 rounded-2xl transition-all duration-300 group ${isActive
+                                                        ? 'bg-gradient-to-br from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/40 transform scale-105'
+                                                        : 'bg-white text-gray-500 hover:text-gray-900 border border-gray-100 hover:border-purple-200 hover:shadow-md'
+                                                        }`}
+                                                >
+                                                    <Icon size={22} className={isActive ? '' : 'opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all'} />
+                                                    <span className={`text-[10px] font-bold mt-2 uppercase tracking-tighter ${isActive ? 'opacity-100' : 'opacity-60 group-hover:opacity-100'}`}>{s.label}</span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
 
-                                        const elements = [];
+                                <div className="mt-auto pt-4 border-t border-gray-100">
+                                    <button
+                                        onClick={clearCanvas}
+                                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-50 text-red-600 rounded-2xl font-bold text-xs hover:bg-red-100 transition-all duration-300 border border-red-100 hover:shadow-sm"
+                                    >
+                                        <Trash2 size={16} />
+                                        RESET CANVAS
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                    </div>
 
-                                        if (isExporting) {
+                    {/* Canvas */}
+                    <div
+                        ref={stageContainerRef}
+                        className="flex-1 overflow-hidden bg-zinc-100/50 relative"
+                        onDragOver={(e) => {
+                            if (workspaceMode === 'flowchart' && draggingFlowShapeId) {
+                                e.preventDefault();
+                            }
+                        }}
+                        onDrop={handleFlowchartShapeDrop}
+                    >
+                        {/* Subtle inner shadow for depth */}
+                        <div className="absolute inset-0 shadow-[inner_0_2px_10px_rgba(0,0,0,0.05)] pointer-events-none z-10" />
+
+                        <Stage
+                            ref={stageRef}
+                            width={canvasSize.width}
+                            height={canvasSize.height}
+                            onMouseDown={handleMouseDown}
+                            onMouseMove={handleMouseMove}
+                            onMouseUp={handleMouseUp}
+                            onWheel={handleWheel}
+                            onDblClick={(e) => {
+                                // Check if double-click was on a text node
+                                const target = e.target;
+                                const id = target.id ? target.id() : '';
+                                console.log('Stage dblclick, target id:', id);
+                                if (id && id.startsWith('text-')) {
+                                    const elementId = parseInt(id.replace('text-', ''));
+                                    console.log('Text element double-clicked, id:', elementId);
+                                    handleTextDblClick(elementId);
+                                }
+                            }}
+                            onDblTap={(e) => {
+                                // Same for touch devices
+                                const target = e.target;
+                                const id = target.id ? target.id() : '';
+                                if (id && id.startsWith('text-')) {
+                                    const elementId = parseInt(id.replace('text-', ''));
+                                    handleTextDblClick(elementId);
+                                }
+                            }}
+                            scaleX={stageScale}
+                            scaleY={stageScale}
+                            x={stagePos.x}
+                            y={stagePos.y}
+                            draggable={(activeCanvasTool === 'select' && !selectedId) || activeCanvasTool === 'pan'}
+                        >
+                            <Layer>
+                                {/* Background pattern - grid or dots */}
+                                {(() => {
+                                    const gridSize = 50;
+
+                                    // Calculate visible area in canvas coordinates
+                                    const startX = Math.floor((-stagePos.x / stageScale) / gridSize) * gridSize;
+                                    const startY = Math.floor((-stagePos.y / stageScale) / gridSize) * gridSize;
+                                    const endX = startX + Math.ceil(canvasSize.width / stageScale) + gridSize;
+                                    const endY = startY + Math.ceil(canvasSize.height / stageScale) + gridSize;
+
+                                    const elements = [];
+
+                                    if (isExporting) {
+                                        elements.push(
+                                            <Rect
+                                                key="export-bg"
+                                                x={-stagePos.x / stageScale}
+                                                y={-stagePos.y / stageScale}
+                                                width={canvasSize.width / stageScale}
+                                                height={canvasSize.height / stageScale}
+                                                fill="#ffffff"
+                                                listening={false}
+                                            />
+                                        );
+                                    } else if (backgroundPattern === 'grid') {
+                                        // Grid lines pattern
+                                        for (let x = startX; x <= endX; x += gridSize) {
                                             elements.push(
-                                                <Rect
-                                                    key="export-bg"
-                                                    x={-stagePos.x / stageScale}
-                                                    y={-stagePos.y / stageScale}
-                                                    width={CANVAS_WIDTH / stageScale}
-                                                    height={CANVAS_HEIGHT / stageScale}
-                                                    fill="#ffffff"
+                                                <Line
+                                                    key={`v-${x}`}
+                                                    points={[x, startY - gridSize, x, endY + gridSize]}
+                                                    stroke="#e2e8f0"
+                                                    strokeWidth={1 / stageScale}
                                                     listening={false}
                                                 />
                                             );
-                                        } else if (backgroundPattern === 'grid') {
-                                            // Grid lines pattern
-                                            for (let x = startX; x <= endX; x += gridSize) {
-                                                elements.push(
-                                                    <Line
-                                                        key={`v-${x}`}
-                                                        points={[x, startY - gridSize, x, endY + gridSize]}
-                                                        stroke="#e5e7eb"
-                                                        strokeWidth={1 / stageScale}
-                                                        listening={false}
-                                                    />
-                                                );
-                                            }
+                                        }
+                                        for (let y = startY; y <= endY; y += gridSize) {
+                                            elements.push(
+                                                <Line
+                                                    key={`h-${y}`}
+                                                    points={[startX - gridSize, y, endX + gridSize, y]}
+                                                    stroke="#e2e8f0"
+                                                    strokeWidth={1 / stageScale}
+                                                    listening={false}
+                                                />
+                                            );
+                                        }
+                                    } else {
+                                        // Dots pattern
+                                        for (let x = startX; x <= endX; x += gridSize) {
                                             for (let y = startY; y <= endY; y += gridSize) {
                                                 elements.push(
-                                                    <Line
-                                                        key={`h-${y}`}
-                                                        points={[startX - gridSize, y, endX + gridSize, y]}
-                                                        stroke="#e5e7eb"
-                                                        strokeWidth={1 / stageScale}
+                                                    <Circle
+                                                        key={`dot-${x}-${y}`}
+                                                        x={x}
+                                                        y={y}
+                                                        radius={1.5 / stageScale}
+                                                        fill="#cbd5e1"
                                                         listening={false}
                                                     />
                                                 );
                                             }
-                                        } else {
-                                            // Dots pattern
-                                            for (let x = startX; x <= endX; x += gridSize) {
-                                                for (let y = startY; y <= endY; y += gridSize) {
-                                                    elements.push(
-                                                        <Circle
-                                                            key={`dot-${x}-${y}`}
-                                                            x={x}
-                                                            y={y}
-                                                            radius={2 / stageScale}
-                                                            fill="#d1d5db"
-                                                            listening={false}
-                                                        />
-                                                    );
-                                                }
-                                            }
                                         }
+                                    }
 
-                                        return elements;
-                                    })()}
+                                    return elements;
+                                })()}
 
-                                    {/* Render all elements */}
-                                    {elements.map(renderShape)}
+                                {/* Render all elements */}
+                                {elements.map(renderShape)}
 
-                                    {/* Remote users' cursors */}
-                                    <LiveCursors cursors={remoteCursors} />
+                                {/* Flowchart node labels (kept separate to avoid pointer conflicts with node drag/select) */}
+                                {elements.map((shape) => {
+                                    if (shape.visible === false) return null;
+                                    if (!FLOWCHART_NODE_TYPES.has(shape.type)) return null;
+                                    if (typeof shape.text !== 'string' || shape.text.trim() === '') return null;
 
-                                    {/* Current drawing preview */}
-                                    {isDrawing && currentPoints.length >= 2 && (
-                                        tool === 'pen' ? (
-                                            <Line
-                                                points={currentPoints}
-                                                stroke={strokeColor}
-                                                strokeWidth={strokeWidth}
-                                                tension={0.5}
-                                                lineCap="round"
-                                                lineJoin="round"
+                                    const width = Number(shape.width) || 80;
+                                    const height = Number(shape.height) || 60;
+                                    const fontPx = Number(shape.fontSize) || 13;
+
+                                    return (
+                                        <Text
+                                            key={`flow-label-${shape.id}`}
+                                            x={(Number(shape.x) || 0) + 8}
+                                            y={(Number(shape.y) || 0) + (height / 2) - (fontPx / 2)}
+                                            width={Math.max(20, width - 16)}
+                                            text={shape.text}
+                                            fontSize={fontPx}
+                                            fontFamily={shape.fontFamily || 'Arial'}
+                                            align={shape.textAlign || 'center'}
+                                            verticalAlign="middle"
+                                            fill={shape.textColor || '#1e293b'}
+                                            listening={false}
+                                        />
+                                    );
+                                })}
+
+                                {/* Flowchart connection handles (visible on hover/source/target while connecting) */}
+                                {workspaceMode === 'flowchart' && (activeCanvasTool === 'connect' || activeCanvasTool === 'arrow') && elements.map((shape) => {
+                                    if (shape.visible === false) return null;
+                                    if (!FLOWCHART_NODE_TYPES.has(shape.type)) return null;
+
+                                    const isHovered = hoveredFlowNodeId === shape.id;
+                                    const isSource = flowConnectStart?.nodeId === shape.id;
+                                    const isTarget = flowConnectHoverAnchor?.node?.id === shape.id;
+                                    if (!isHovered && !isSource && !isTarget) return null;
+
+                                    const points = getFlowNodeConnectionPoints(shape);
+
+                                    return Object.entries(points).map(([side, point]) => {
+                                        const isActiveHandle = (isSource && flowConnectStart?.side === side) || (isTarget && flowConnectHoverAnchor?.side === side);
+
+                                        return (
+                                            <Circle
+                                                key={`flow-handle-${shape.id}-${side}`}
+                                                x={point.x}
+                                                y={point.y}
+                                                radius={isActiveHandle ? (7 / stageScale) : (5.5 / stageScale)}
+                                                fill={isActiveHandle ? '#4338ca' : '#6366f1'}
+                                                stroke="#ffffff"
+                                                strokeWidth={2 / stageScale}
+                                                shadowColor="rgba(67,56,202,0.35)"
+                                                shadowBlur={10 / stageScale}
+                                                shadowOpacity={0.8}
+                                                onMouseEnter={(e) => {
+                                                    e.cancelBubble = true;
+                                                    setHoveredFlowNodeId(shape.id);
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                    e.cancelBubble = true;
+                                                    if (!flowConnectStart || flowConnectStart.nodeId !== shape.id) {
+                                                        setHoveredFlowNodeId((prev) => (prev === shape.id ? null : prev));
+                                                    }
+                                                }}
+                                                onMouseDown={(e) => {
+                                                    e.cancelBubble = true;
+
+                                                    if (!flowConnectStart) {
+                                                        setIsDrawing(true);
+                                                        setFlowConnectStart({
+                                                            nodeId: shape.id,
+                                                            side,
+                                                            x: point.x,
+                                                            y: point.y,
+                                                        });
+                                                        setFlowConnectHoverAnchor({ node: shape, side, point });
+                                                        setCurrentPoints([point.x, point.y, point.x, point.y]);
+                                                        return;
+                                                    }
+
+                                                    if (flowConnectStart.nodeId === shape.id) {
+                                                        setFlowConnectStart({
+                                                            nodeId: shape.id,
+                                                            side,
+                                                            x: point.x,
+                                                            y: point.y,
+                                                        });
+                                                        setFlowConnectHoverAnchor({ node: shape, side, point });
+                                                        setCurrentPoints([point.x, point.y, point.x, point.y]);
+                                                        return;
+                                                    }
+
+                                                    createFlowConnectorFromAnchors(flowConnectStart, { node: shape, side, point });
+                                                    setIsDrawing(false);
+                                                    setFlowConnectStart(null);
+                                                    setFlowConnectHoverAnchor(null);
+                                                    setCurrentPoints([]);
+                                                }}
                                             />
-                                        ) : currentPoints.length === 4 && (
-                                            tool === 'rectangle' ? (
+                                        );
+                                    });
+                                })}
+
+                                {/* Remote users' cursors */}
+                                <LiveCursors cursors={remoteCursors} />
+
+                                {/* Current drawing preview */}
+                                {isDrawing && currentPoints.length >= 2 && (
+                                    activeCanvasTool === 'pen' ? (
+                                        <Line
+                                            points={currentPoints}
+                                            stroke={previewStroke}
+                                            strokeWidth={strokeWidth}
+                                            tension={0.5}
+                                            lineCap="round"
+                                            lineJoin="round"
+                                        />
+                                    ) : currentPoints.length === 4 && (
+                                        activeCanvasTool === 'rectangle' ? (
+                                            <Rect
+                                                x={Math.min(currentPoints[0], currentPoints[2])}
+                                                y={Math.min(currentPoints[1], currentPoints[3])}
+                                                width={Math.abs(currentPoints[2] - currentPoints[0])}
+                                                height={Math.abs(currentPoints[3] - currentPoints[1])}
+                                                fill={previewFill}
+                                                stroke={previewStroke}
+                                                strokeWidth={strokeWidth}
+                                                cornerRadius={activeFlowShapeDef && (activeFlowShapeDef.id === 'fc-terminal' || activeFlowShapeDef.id === 'fc-delay')
+                                                    ? Math.max(8, Math.min(
+                                                        Math.abs(currentPoints[2] - currentPoints[0]),
+                                                        Math.abs(currentPoints[3] - currentPoints[1])
+                                                    ) / 2)
+                                                    : 0}
+                                            />
+                                        ) : activeCanvasTool === 'circle' ? (
+                                            <Circle
+                                                x={(currentPoints[0] + currentPoints[2]) / 2}
+                                                y={(currentPoints[1] + currentPoints[3]) / 2}
+                                                radius={Math.min(
+                                                    Math.abs(currentPoints[2] - currentPoints[0]),
+                                                    Math.abs(currentPoints[3] - currentPoints[1])
+                                                ) / 2}
+                                                fill={previewFill}
+                                                stroke={previewStroke}
+                                                strokeWidth={strokeWidth}
+                                            />
+                                        ) : activeCanvasTool === 'triangle' ? (
+                                            <RegularPolygon
+                                                x={(currentPoints[0] + currentPoints[2]) / 2}
+                                                y={(currentPoints[1] + currentPoints[3]) / 2}
+                                                sides={3}
+                                                radius={Math.min(
+                                                    Math.abs(currentPoints[2] - currentPoints[0]),
+                                                    Math.abs(currentPoints[3] - currentPoints[1])
+                                                ) / 2}
+                                                fill={previewFill}
+                                                stroke={previewStroke}
+                                                strokeWidth={strokeWidth}
+                                            />
+                                        ) : activeCanvasTool === 'star' ? (
+                                            <Star
+                                                x={(currentPoints[0] + currentPoints[2]) / 2}
+                                                y={(currentPoints[1] + currentPoints[3]) / 2}
+                                                numPoints={5}
+                                                innerRadius={Math.min(
+                                                    Math.abs(currentPoints[2] - currentPoints[0]),
+                                                    Math.abs(currentPoints[3] - currentPoints[1])
+                                                ) / 4}
+                                                outerRadius={Math.min(
+                                                    Math.abs(currentPoints[2] - currentPoints[0]),
+                                                    Math.abs(currentPoints[3] - currentPoints[1])
+                                                ) / 2}
+                                                fill={previewFill}
+                                                stroke={previewStroke}
+                                                strokeWidth={strokeWidth}
+                                            />
+                                        ) : activeCanvasTool === 'hexagon' ? (
+                                            <RegularPolygon
+                                                x={(currentPoints[0] + currentPoints[2]) / 2}
+                                                y={(currentPoints[1] + currentPoints[3]) / 2}
+                                                sides={6}
+                                                radius={Math.min(
+                                                    Math.abs(currentPoints[2] - currentPoints[0]),
+                                                    Math.abs(currentPoints[3] - currentPoints[1])
+                                                ) / 2}
+                                                fill={previewFill}
+                                                stroke={previewStroke}
+                                                strokeWidth={strokeWidth}
+                                            />
+                                        ) : activeCanvasTool === 'pentagon' ? (
+                                            <RegularPolygon
+                                                x={(currentPoints[0] + currentPoints[2]) / 2}
+                                                y={(currentPoints[1] + currentPoints[3]) / 2}
+                                                sides={5}
+                                                radius={Math.min(
+                                                    Math.abs(currentPoints[2] - currentPoints[0]),
+                                                    Math.abs(currentPoints[3] - currentPoints[1])
+                                                ) / 2}
+                                                fill={previewFill}
+                                                stroke={previewStroke}
+                                                strokeWidth={strokeWidth}
+                                            />
+                                        ) : activeCanvasTool === 'diamond' ? (
+                                            <RegularPolygon
+                                                x={(currentPoints[0] + currentPoints[2]) / 2}
+                                                y={(currentPoints[1] + currentPoints[3]) / 2}
+                                                sides={4}
+                                                radius={Math.min(
+                                                    Math.abs(currentPoints[2] - currentPoints[0]),
+                                                    Math.abs(currentPoints[3] - currentPoints[1])
+                                                ) / 2}
+                                                rotation={45}
+                                                fill={previewFill}
+                                                stroke={previewStroke}
+                                                strokeWidth={strokeWidth}
+                                            />
+                                        ) : activeCanvasTool === 'parallelogram' ? (
+                                            <Line
+                                                x={Math.min(currentPoints[0], currentPoints[2])}
+                                                y={Math.min(currentPoints[1], currentPoints[3])}
+                                                points={[
+                                                    Math.abs(currentPoints[2] - currentPoints[0]) * 0.25, 0,
+                                                    Math.abs(currentPoints[2] - currentPoints[0]), 0,
+                                                    Math.abs(currentPoints[2] - currentPoints[0]) * 0.75, Math.abs(currentPoints[3] - currentPoints[1]),
+                                                    0, Math.abs(currentPoints[3] - currentPoints[1]),
+                                                ]}
+                                                fill={previewFill}
+                                                stroke={previewStroke}
+                                                strokeWidth={strokeWidth}
+                                                closed
+                                            />
+                                        ) : activeCanvasTool === 'cylinder' ? (
+                                            <Group x={Math.min(currentPoints[0], currentPoints[2])} y={Math.min(currentPoints[1], currentPoints[3])}>
                                                 <Rect
-                                                    x={Math.min(currentPoints[0], currentPoints[2])}
-                                                    y={Math.min(currentPoints[1], currentPoints[3])}
+                                                    x={0}
+                                                    y={Math.abs(currentPoints[3] - currentPoints[1]) * 0.1}
                                                     width={Math.abs(currentPoints[2] - currentPoints[0])}
-                                                    height={Math.abs(currentPoints[3] - currentPoints[1])}
-                                                    fill={fillColor}
-                                                    stroke={strokeColor}
+                                                    height={Math.abs(currentPoints[3] - currentPoints[1]) * 0.8}
+                                                    fill={previewFill}
+                                                    stroke={previewStroke}
                                                     strokeWidth={strokeWidth}
                                                 />
-                                            ) : tool === 'circle' ? (
-                                                <Circle
-                                                    x={(currentPoints[0] + currentPoints[2]) / 2}
-                                                    y={(currentPoints[1] + currentPoints[3]) / 2}
-                                                    radius={Math.min(
-                                                        Math.abs(currentPoints[2] - currentPoints[0]),
-                                                        Math.abs(currentPoints[3] - currentPoints[1])
-                                                    ) / 2}
-                                                    fill={fillColor}
-                                                    stroke={strokeColor}
+                                                <Ellipse
+                                                    x={Math.abs(currentPoints[2] - currentPoints[0]) / 2}
+                                                    y={Math.abs(currentPoints[3] - currentPoints[1]) * 0.1}
+                                                    radiusX={Math.abs(currentPoints[2] - currentPoints[0]) / 2}
+                                                    radiusY={Math.abs(currentPoints[3] - currentPoints[1]) * 0.1}
+                                                    fill={previewFill}
+                                                    stroke={previewStroke}
                                                     strokeWidth={strokeWidth}
                                                 />
-                                            ) : tool === 'triangle' ? (
-                                                <RegularPolygon
-                                                    x={(currentPoints[0] + currentPoints[2]) / 2}
-                                                    y={(currentPoints[1] + currentPoints[3]) / 2}
-                                                    sides={3}
-                                                    radius={Math.min(
-                                                        Math.abs(currentPoints[2] - currentPoints[0]),
-                                                        Math.abs(currentPoints[3] - currentPoints[1])
-                                                    ) / 2}
-                                                    fill={fillColor}
-                                                    stroke={strokeColor}
+                                                <Ellipse
+                                                    x={Math.abs(currentPoints[2] - currentPoints[0]) / 2}
+                                                    y={Math.abs(currentPoints[3] - currentPoints[1]) * 0.9}
+                                                    radiusX={Math.abs(currentPoints[2] - currentPoints[0]) / 2}
+                                                    radiusY={Math.abs(currentPoints[3] - currentPoints[1]) * 0.1}
+                                                    fill={previewFill}
+                                                    stroke={previewStroke}
                                                     strokeWidth={strokeWidth}
                                                 />
-                                            ) : tool === 'star' ? (
-                                                <Star
-                                                    x={(currentPoints[0] + currentPoints[2]) / 2}
-                                                    y={(currentPoints[1] + currentPoints[3]) / 2}
-                                                    numPoints={5}
-                                                    innerRadius={Math.min(
-                                                        Math.abs(currentPoints[2] - currentPoints[0]),
-                                                        Math.abs(currentPoints[3] - currentPoints[1])
-                                                    ) / 4}
-                                                    outerRadius={Math.min(
-                                                        Math.abs(currentPoints[2] - currentPoints[0]),
-                                                        Math.abs(currentPoints[3] - currentPoints[1])
-                                                    ) / 2}
-                                                    fill={fillColor}
-                                                    stroke={strokeColor}
-                                                    strokeWidth={strokeWidth}
-                                                />
-                                            ) : tool === 'hexagon' ? (
-                                                <RegularPolygon
-                                                    x={(currentPoints[0] + currentPoints[2]) / 2}
-                                                    y={(currentPoints[1] + currentPoints[3]) / 2}
-                                                    sides={6}
-                                                    radius={Math.min(
-                                                        Math.abs(currentPoints[2] - currentPoints[0]),
-                                                        Math.abs(currentPoints[3] - currentPoints[1])
-                                                    ) / 2}
-                                                    fill={fillColor}
-                                                    stroke={strokeColor}
-                                                    strokeWidth={strokeWidth}
-                                                />
-                                            ) : tool === 'pentagon' ? (
-                                                <RegularPolygon
-                                                    x={(currentPoints[0] + currentPoints[2]) / 2}
-                                                    y={(currentPoints[1] + currentPoints[3]) / 2}
-                                                    sides={5}
-                                                    radius={Math.min(
-                                                        Math.abs(currentPoints[2] - currentPoints[0]),
-                                                        Math.abs(currentPoints[3] - currentPoints[1])
-                                                    ) / 2}
-                                                    fill={fillColor}
-                                                    stroke={strokeColor}
-                                                    strokeWidth={strokeWidth}
-                                                />
-                                            ) : tool === 'arrow' ? (
-                                                <Arrow
-                                                    points={[currentPoints[0], currentPoints[1], currentPoints[2], currentPoints[3]]}
-                                                    stroke={strokeColor}
-                                                    strokeWidth={strokeWidth}
-                                                    fill={strokeColor}
-                                                    pointerLength={20}
-                                                    pointerWidth={20}
-                                                />
-                                            ) : tool === 'line' ? (
+                                            </Group>
+                                        ) : activeCanvasTool === 'note' ? (
+                                            <Group x={Math.min(currentPoints[0], currentPoints[2])} y={Math.min(currentPoints[1], currentPoints[3])}>
                                                 <Line
-                                                    points={[currentPoints[0], currentPoints[1], currentPoints[2], currentPoints[3]]}
-                                                    stroke={strokeColor}
+                                                    points={[
+                                                        0, 0,
+                                                        Math.abs(currentPoints[2] - currentPoints[0]) * 0.8, 0,
+                                                        Math.abs(currentPoints[2] - currentPoints[0]), Math.abs(currentPoints[3] - currentPoints[1]) * 0.2,
+                                                        Math.abs(currentPoints[2] - currentPoints[0]), Math.abs(currentPoints[3] - currentPoints[1]),
+                                                        0, Math.abs(currentPoints[3] - currentPoints[1]),
+                                                    ]}
+                                                    fill={previewFill}
+                                                    stroke={previewStroke}
                                                     strokeWidth={strokeWidth}
-                                                    lineCap="round"
+                                                    closed
                                                 />
-                                            ) : null
-                                        )
-                                    )}
+                                                <Line
+                                                    points={[
+                                                        Math.abs(currentPoints[2] - currentPoints[0]) * 0.8, 0,
+                                                        Math.abs(currentPoints[2] - currentPoints[0]) * 0.8, Math.abs(currentPoints[3] - currentPoints[1]) * 0.2,
+                                                        Math.abs(currentPoints[2] - currentPoints[0]), Math.abs(currentPoints[3] - currentPoints[1]) * 0.2,
+                                                    ]}
+                                                    stroke={previewStroke}
+                                                    strokeWidth={strokeWidth}
+                                                />
+                                            </Group>
+                                        ) : (activeCanvasTool === 'arrow' || activeCanvasTool === 'connect') ? (
+                                            <Arrow
+                                                points={flowPreviewConnectorPoints || [currentPoints[0], currentPoints[1], currentPoints[2], currentPoints[3]]}
+                                                stroke={previewStroke}
+                                                strokeWidth={strokeWidth}
+                                                dash={workspaceMode === 'flowchart' && flowConnectorStyle === 'dashed' ? [10, 6] : undefined}
+                                                tension={flowPreviewConnectorPoints ? 0 : (workspaceMode === 'flowchart' && flowConnectorCurved ? 0.4 : 0)}
+                                                fill={previewStroke}
+                                                pointerLength={20}
+                                                pointerWidth={20}
+                                            />
+                                        ) : activeCanvasTool === 'line' ? (
+                                            <Line
+                                                points={[currentPoints[0], currentPoints[1], currentPoints[2], currentPoints[3]]}
+                                                stroke={previewStroke}
+                                                strokeWidth={strokeWidth}
+                                                dash={workspaceMode === 'flowchart' && flowConnectorStyle === 'dashed' ? [10, 6] : undefined}
+                                                tension={workspaceMode === 'flowchart' && flowConnectorCurved ? 0.4 : 0}
+                                                lineCap="round"
+                                            />
+                                        ) : null
+                                    )
+                                )}
 
-                                    {/* Transformer for resize/rotate handles */}
-                                    <Transformer
-                                        ref={transformerRef}
-                                        boundBoxFunc={(oldBox, newBox) => {
-                                            // Limit minimum size
-                                            if (newBox.width < 10 || newBox.height < 10) {
-                                                return oldBox;
-                                            }
-                                            return newBox;
-                                        }}
-                                        onTransformEnd={(e) => {
-                                            const node = e.target;
-                                            const scaleX = node.scaleX();
-                                            const scaleY = node.scaleY();
+                                {/* Transformer for resize/rotate handles */}
+                                <Transformer
+                                    ref={transformerRef}
+                                    boundBoxFunc={(oldBox, newBox) => {
+                                        // Limit minimum size
+                                        if (newBox.width < 10 || newBox.height < 10) {
+                                            return oldBox;
+                                        }
+                                        return newBox;
+                                    }}
+                                    onTransformEnd={(e) => {
+                                        const node = e.target;
+                                        const scaleX = node.scaleX();
+                                        const scaleY = node.scaleY();
 
-                                            // Reset scale and apply to width/height
-                                            node.scaleX(1);
-                                            node.scaleY(1);
+                                        // Reset scale and apply to width/height
+                                        node.scaleX(1);
+                                        node.scaleY(1);
 
-                                            setElements(prev => prev.map(el => {
-                                                if (el.id === selectedId) {
-                                                    const updates = {
-                                                        x: node.x(),
-                                                        y: node.y(),
-                                                        rotation: node.rotation(),
-                                                    };
-                                                    if (el.type !== 'pen') {
-                                                        updates.width = Math.max(10, node.width() * scaleX);
-                                                        updates.height = Math.max(10, node.height() * scaleY);
-                                                    }
-                                                    if (el.type === 'text') {
-                                                        updates.fontSize = Math.max(8, (el.fontSize || 24) * scaleY);
-                                                    }
-                                                    return { ...el, ...updates };
+                                        setElements(prev => prev.map(el => {
+                                            if (el.id === selectedId) {
+                                                const updates = {
+                                                    x: node.x(),
+                                                    y: node.y(),
+                                                    rotation: node.rotation(),
+                                                };
+                                                if (el.type !== 'pen') {
+                                                    updates.width = Math.max(10, node.width() * scaleX);
+                                                    updates.height = Math.max(10, node.height() * scaleY);
                                                 }
-                                                return el;
-                                            }));
-                                            triggerAutoSave(elements);
-                                        }}
-                                        rotateEnabled={true}
-                                        enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right', 'top-center', 'bottom-center']}
-                                        anchorSize={8}
-                                        anchorCornerRadius={2}
-                                        borderStroke="#8b3dff"
-                                        anchorStroke="#8b3dff"
-                                        anchorFill="#ffffff"
-                                    />
-                                </Layer>
-                            </Stage>
+                                                if (el.type === 'text') {
+                                                    updates.fontSize = Math.max(8, (el.fontSize || 24) * scaleY);
+                                                }
+                                                return { ...el, ...updates };
+                                            }
+                                            return el;
+                                        }));
+                                        triggerAutoSave(elements);
+                                    }}
+                                    rotateEnabled={true}
+                                    enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right', 'top-center', 'bottom-center']}
+                                    anchorSize={8}
+                                    anchorCornerRadius={2}
+                                    borderStroke="#8b3dff"
+                                    anchorStroke="#8b3dff"
+                                    anchorFill="#ffffff"
+                                />
+                            </Layer>
+                        </Stage>
+
+                        {workspaceMode === 'flowchart' && showFlowchartMiniMap && (() => {
+                            const mmNodes = elements
+                                .filter(el => el.visible !== false && FLOWCHART_NODE_TYPES.has(el.type))
+                                .map(el => ({
+                                    id: el.id,
+                                    x: el.x || 0,
+                                    y: el.y || 0,
+                                    w: Math.max(20, el.width || 80),
+                                    h: Math.max(20, el.height || 60),
+                                    color: el.fill || '#c7d2fe',
+                                }));
+
+                            if (mmNodes.length === 0) return null;
+
+                            const MM_W = 180;
+                            const MM_H = 110;
+                            const pad = 80;
+
+                            const minX = Math.min(...mmNodes.map(n => n.x)) - pad;
+                            const minY = Math.min(...mmNodes.map(n => n.y)) - pad;
+                            const maxX = Math.max(...mmNodes.map(n => n.x + n.w)) + pad;
+                            const maxY = Math.max(...mmNodes.map(n => n.y + n.h)) + pad;
+
+                            const contentW = Math.max(1, maxX - minX);
+                            const contentH = Math.max(1, maxY - minY);
+                            const sx = MM_W / contentW;
+                            const sy = MM_H / contentH;
+                            const sc = Math.min(sx, sy);
+
+                            const vpX = ((-stagePos.x / stageScale) - minX) * sc;
+                            const vpY = ((-stagePos.y / stageScale) - minY) * sc;
+                            const vpW = (canvasSize.width / stageScale) * sc;
+                            const vpH = (canvasSize.height / stageScale) * sc;
+
+                            return (
+                                <div className="absolute bottom-4 right-4 w-[180px] h-[110px] bg-white/95 border border-gray-200 rounded-lg shadow-lg overflow-hidden z-20">
+                                    <svg width={MM_W} height={MM_H}>
+                                        {mmNodes.map(node => (
+                                            <rect
+                                                key={node.id}
+                                                x={(node.x - minX) * sc}
+                                                y={(node.y - minY) * sc}
+                                                width={node.w * sc}
+                                                height={node.h * sc}
+                                                fill={node.color}
+                                                stroke="#94a3b8"
+                                                strokeWidth="0.8"
+                                                rx="2"
+                                            />
+                                        ))}
+                                        <rect
+                                            x={vpX}
+                                            y={vpY}
+                                            width={vpW}
+                                            height={vpH}
+                                            fill="none"
+                                            stroke="#4f46e5"
+                                            strokeWidth="1.5"
+                                            strokeDasharray="4,3"
+                                            rx="2"
+                                        />
+                                    </svg>
+                                    <div className="absolute top-1 left-2 text-[9px] font-bold uppercase tracking-wider text-slate-400">Mini Map</div>
+                                </div>
+                            );
+                        })()}
+                    </div>
+
+                    {/* Enhanced Properties Panel with Tabs - Zinc frosted glass */}
+                    <div className="w-80 h-[calc(100%-32px)] my-4 mr-4 bg-zinc-50/90 backdrop-blur-xl border border-zinc-200/50 overflow-y-auto shadow-2xl transition-all duration-300 ease-in-out flex flex-col rounded-2xl z-20 custom-scrollbar">
+                        {/* Tab Headers */}
+                        <div className="flex p-2 gap-1 bg-zinc-100/50 rounded-t-2xl border-b border-zinc-200/50">
+                            {['design', 'layers', 'export'].map(tab => (
+                                <button
+                                    key={tab}
+                                    onClick={() => setRightPanelTab(tab)}
+                                    className={`flex-1 py-2 text-[10px] font-black uppercase tracking-[0.15em] transition-all duration-300 rounded-xl ${rightPanelTab === tab
+                                        ? 'text-purple-600 bg-white shadow-sm border border-purple-100'
+                                        : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100/50'
+                                        }`}
+                                >
+                                    {tab}
+                                </button>
+                            ))}
                         </div>
 
-                        {/* Enhanced Properties Panel with Tabs */}
-                        <div className="w-[280px] bg-white border-l border-gray-200 overflow-y-auto shadow-sm flex flex-col">
-                            {/* Tab Headers */}
-                            <div className="flex border-b border-gray-200">
-                                {['design', 'layers', 'export'].map(tab => (
-                                    <button
-                                        key={tab}
-                                        onClick={() => setRightPanelTab(tab)}
-                                        className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-colors ${rightPanelTab === tab
-                                            ? 'text-purple-600 border-b-2 border-purple-600 bg-purple-50'
-                                            : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                                            }`}
-                                    >
-                                        {tab}
-                                    </button>
-                                ))}
-                            </div>
-
-                            <div className="flex-1 p-4 overflow-y-auto">
-                                {/* DESIGN TAB */}
-                                {rightPanelTab === 'design' && (
-                                    <div className="space-y-6">
-                                        {/* Background Pattern Toggle */}
-                                        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-                                            <div className="flex items-center gap-2">
-                                                <Grid3X3 size={16} className="text-gray-600" />
-                                                <span className="text-xs font-semibold text-gray-700">Background</span>
+                        <div className="flex-1 p-5 overflow-y-auto space-y-8 custom-scrollbar">
+                            {/* DESIGN TAB */}
+                            {rightPanelTab === 'design' && (
+                                <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
+                                    {/* Background Pattern Toggle */}
+                                    <div className="space-y-3">
+                                        <h4 className="text-[11px] font-black text-gray-500 uppercase tracking-[0.1em] px-1 italic">Workspace Appearance</h4>
+                                        <div className="flex items-center justify-between p-2 bg-zinc-100/50 rounded-2xl border border-zinc-200/50">
+                                            <div className="flex items-center gap-2 pl-2">
+                                                <Grid3X3 size={14} className="text-gray-500" />
+                                                <span className="text-[11px] font-bold text-gray-700">Pattern</span>
                                             </div>
                                             <div className="flex gap-1">
                                                 <button
                                                     onClick={() => setBackgroundPattern('grid')}
-                                                    className={`px-2 py-1 text-xs font-medium rounded-lg transition-colors ${backgroundPattern === 'grid' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
+                                                    className={`px-3 py-1.5 text-[10px] font-bold rounded-xl transition-all ${backgroundPattern === 'grid' ? 'bg-white shadow-sm text-purple-700 border border-purple-100' : 'text-gray-400 hover:text-gray-600'}`}
                                                 >
                                                     Grid
                                                 </button>
                                                 <button
                                                     onClick={() => setBackgroundPattern('dots')}
-                                                    className={`px-2 py-1 text-xs font-medium rounded-lg transition-colors ${backgroundPattern === 'dots' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
+                                                    className={`px-3 py-1.5 text-[10px] font-bold rounded-xl transition-all ${backgroundPattern === 'dots' ? 'bg-white shadow-sm text-purple-700 border border-purple-100' : 'text-gray-400 hover:text-gray-600'}`}
                                                 >
                                                     Dots
                                                 </button>
                                             </div>
                                         </div>
+                                    </div>
 
-                                        {/* Colors */}
-                                        <div>
-                                            <label className="text-xs font-semibold text-gray-700 mb-2 block uppercase tracking-wider">Stroke Color</label>
-                                            <div className="flex items-center gap-2">
-                                                <input
-                                                    type="color"
-                                                    value={selectedElement?.stroke || strokeColor}
-                                                    onChange={(e) => {
-                                                        setStrokeColor(e.target.value);
-                                                        if (selectedId) {
-                                                            setElements(prev => prev.map(el =>
-                                                                el.id === selectedId ? { ...el, stroke: e.target.value } : el
-                                                            ));
-                                                        }
-                                                    }}
-                                                    className="w-10 h-10 rounded-lg cursor-pointer border-2 border-gray-200"
-                                                />
-                                                <input
-                                                    type="text"
-                                                    value={selectedElement?.stroke || strokeColor}
-                                                    onChange={(e) => {
-                                                        setStrokeColor(e.target.value);
-                                                        if (selectedId) {
-                                                            setElements(prev => prev.map(el =>
-                                                                el.id === selectedId ? { ...el, stroke: e.target.value } : el
-                                                            ));
-                                                        }
-                                                    }}
-                                                    className="flex-1 px-2 py-1.5 border border-gray-200 rounded-lg text-xs font-mono uppercase"
-                                                />
+                                    {/* Style Controls */}
+                                    <div className="space-y-6">
+                                        <h4 className="text-[11px] font-black text-gray-500 uppercase tracking-[0.1em] px-1 italic">Style Controls</h4>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-bold text-gray-600 ml-1 uppercase">Stroke</label>
+                                                <div className="flex items-center gap-2 p-1.5 bg-gray-50/50 rounded-xl border border-gray-100 group hover:border-purple-200 transition-colors">
+                                                    <input
+                                                        type="color"
+                                                        value={selectedElement?.stroke || strokeColor}
+                                                        onChange={(e) => {
+                                                            setStrokeColor(e.target.value);
+                                                            if (selectedId) {
+                                                                setElements(prev => prev.map(el =>
+                                                                    el.id === selectedId ? { ...el, stroke: e.target.value } : el
+                                                                ));
+                                                            }
+                                                        }}
+                                                        className="w-8 h-8 rounded-lg cursor-pointer border-0 p-0 bg-transparent"
+                                                    />
+                                                    <span className="text-[10px] font-mono font-bold text-gray-400 uppercase truncate">
+                                                        {(selectedElement?.stroke || strokeColor).slice(1)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-bold text-gray-600 ml-1 uppercase">Fill</label>
+                                                <div className="flex items-center gap-2 p-1.5 bg-gray-50/50 rounded-xl border border-gray-100 group hover:border-purple-200 transition-colors">
+                                                    <input
+                                                        type="color"
+                                                        value={selectedElement?.fill || fillColor}
+                                                        onChange={(e) => {
+                                                            setFillColor(e.target.value);
+                                                            if (selectedId) {
+                                                                setElements(prev => prev.map(el =>
+                                                                    el.id === selectedId ? { ...el, fill: e.target.value } : el
+                                                                ));
+                                                            }
+                                                        }}
+                                                        className="w-8 h-8 rounded-lg cursor-pointer border-0 p-0 bg-transparent"
+                                                    />
+                                                    <span className="text-[10px] font-mono font-bold text-gray-400 uppercase truncate">
+                                                        {(selectedElement?.fill || fillColor).slice(1)}
+                                                    </span>
+                                                </div>
                                             </div>
                                         </div>
 
-                                        <div>
-                                            <label className="text-xs font-semibold text-gray-700 mb-2 block uppercase tracking-wider">Fill Color</label>
-                                            <div className="flex items-center gap-2">
-                                                <input
-                                                    type="color"
-                                                    value={selectedElement?.fill || fillColor}
-                                                    onChange={(e) => {
-                                                        setFillColor(e.target.value);
-                                                        if (selectedId) {
-                                                            setElements(prev => prev.map(el =>
-                                                                el.id === selectedId ? { ...el, fill: e.target.value } : el
-                                                            ));
-                                                        }
-                                                    }}
-                                                    className="w-10 h-10 rounded-lg cursor-pointer border-2 border-gray-200"
-                                                />
-                                                <input
-                                                    type="text"
-                                                    value={selectedElement?.fill || fillColor}
-                                                    onChange={(e) => {
-                                                        setFillColor(e.target.value);
-                                                        if (selectedId) {
-                                                            setElements(prev => prev.map(el =>
-                                                                el.id === selectedId ? { ...el, fill: e.target.value } : el
-                                                            ));
-                                                        }
-                                                    }}
-                                                    className="flex-1 px-2 py-1.5 border border-gray-200 rounded-lg text-xs font-mono uppercase"
-                                                />
+                                        <div className="space-y-3 p-4 bg-gray-50/50 rounded-2xl border border-gray-100">
+                                            <div className="flex items-center justify-between">
+                                                <label className="text-[10px] font-bold text-gray-600 uppercase">Thickness</label>
+                                                <span className="text-[10px] font-black text-purple-600">{selectedElement?.strokeWidth || strokeWidth}PX</span>
                                             </div>
+                                            <input
+                                                type="range" min="1" max="20"
+                                                value={selectedElement?.strokeWidth || strokeWidth}
+                                                onChange={(e) => {
+                                                    const newWidth = parseInt(e.target.value);
+                                                    setStrokeWidth(newWidth);
+                                                    if (selectedId) {
+                                                        setElements(prev => prev.map(el =>
+                                                            el.id === selectedId ? { ...el, strokeWidth: newWidth } : el
+                                                        ));
+                                                    }
+                                                }}
+                                                className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                                            />
                                         </div>
+                                    </div>
 
-                                        <div>
-                                            <label className="text-xs font-semibold text-gray-700 mb-2 block uppercase tracking-wider">Stroke Width</label>
-                                            <div className="flex items-center gap-2">
-                                                <input
-                                                    type="range"
-                                                    min="1"
-                                                    max="20"
-                                                    value={selectedElement?.strokeWidth || strokeWidth}
-                                                    onChange={(e) => {
-                                                        const newWidth = parseInt(e.target.value);
-                                                        setStrokeWidth(newWidth);
-                                                        if (selectedId) {
-                                                            setElements(prev => prev.map(el =>
-                                                                el.id === selectedId ? { ...el, strokeWidth: newWidth } : el
-                                                            ));
-                                                        }
-                                                    }}
-                                                    className="flex-1"
-                                                />
-                                                <span className="text-xs font-mono w-8 text-center">{selectedElement?.strokeWidth || strokeWidth}px</span>
-                                            </div>
-                                        </div>
-
-                                        {/* Selected Element Controls */}
-                                        {selectedElement && (
-                                            <>
-                                                <div className="pt-4 border-t border-gray-200">
-                                                    <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">Selected: {selectedElement.type}</h4>
-
-                                                    {/* Opacity Control */}
-                                                    <div className="mb-4">
-                                                        <label className="text-xs font-semibold text-gray-600 mb-1 block">Opacity</label>
-                                                        <div className="flex items-center gap-2">
-                                                            <input
-                                                                type="range" min="0" max="1" step="0.1"
-                                                                value={selectedElement.opacity ?? 1}
-                                                                onChange={(e) => updateElementOpacity(selectedElement.id, parseFloat(e.target.value))}
-                                                                className="flex-1"
-                                                            />
-                                                            <span className="text-xs w-10">{Math.round((selectedElement.opacity ?? 1) * 100)}%</span>
+                                    {selectedElement && (
+                                        <div className="space-y-6 pt-6 border-t border-gray-100 animate-in fade-in duration-500">
+                                            {/* Shape header */}
+                                            <div className="flex items-center gap-2 pb-1">
+                                                {selectedElement.flowNodeType && (() => {
+                                                    const def = getFlowchartShapeDef(selectedElement.flowNodeType);
+                                                    return def ? (
+                                                        <div className="w-7 h-7 flex items-center justify-center rounded-lg shrink-0 text-sm font-bold"
+                                                            style={{ background: def.fill, color: def.stroke, border: `1.5px solid ${def.stroke}` }}>
+                                                            {def.icon}
                                                         </div>
+                                                    ) : null;
+                                                })()}
+                                                <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-[0.1em] italic">
+                                                    {selectedElement.flowNodeType
+                                                        ? (getFlowchartShapeDef(selectedElement.flowNodeType)?.label || selectedElement.flowNodeType.replace('fc-', ''))
+                                                        : selectedElement.type
+                                                    } Settings
+                                                </h4>
+                                            </div>
+
+                                            {/* Flowchart node settings */}
+                                            {selectedElement.flowNodeType && (
+                                                <div className="space-y-3 p-4 bg-indigo-50/60 rounded-2xl border border-indigo-100 text-gray-900">
+                                                    <label className="text-[10px] font-black text-indigo-700 uppercase tracking-widest block">
+                                                        {getFlowchartShapeDef(selectedElement.flowNodeType)?.label || 'Shape'} Properties
+                                                    </label>
+
+                                                    {/* Name — always shown */}
+                                                    <div>
+                                                        <label className="text-[10px] font-bold text-gray-600 block mb-1">Name</label>
+                                                        <input type="text"
+                                                            value={selectedElement.text || ''}
+                                                            onChange={e => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, text: e.target.value } : el))}
+                                                            placeholder={`Enter ${getFlowchartShapeDef(selectedElement.flowNodeType)?.label?.toLowerCase() || 'shape'} name…`}
+                                                            className="w-full text-xs px-3 py-2 border border-indigo-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white" />
                                                     </div>
 
-                                                    {/* Rotation Control */}
-                                                    <div className="mb-4">
-                                                        <label className="text-xs font-semibold text-gray-600 mb-1 block flex items-center gap-1">
-                                                            <RotateCw size={12} />
-                                                            Rotation
-                                                        </label>
-                                                        <div className="flex items-center gap-2">
-                                                            <input
-                                                                type="range" min="0" max="360" step="1"
-                                                                value={selectedElement.rotation || 0}
-                                                                onChange={(e) => {
-                                                                    const newRotation = parseInt(e.target.value);
-                                                                    setElements(prev => prev.map(el =>
-                                                                        el.id === selectedId
-                                                                            ? { ...el, rotation: newRotation }
-                                                                            : el
-                                                                    ));
-                                                                }}
-                                                                className="flex-1"
-                                                            />
-                                                            <input
-                                                                type="number"
-                                                                value={selectedElement.rotation || 0}
-                                                                onChange={(e) => {
-                                                                    const newRotation = parseInt(e.target.value) || 0;
-                                                                    setElements(prev => prev.map(el =>
-                                                                        el.id === selectedId
-                                                                            ? { ...el, rotation: ((newRotation % 360) + 360) % 360 }
-                                                                            : el
-                                                                    ));
-                                                                }}
-                                                                className="w-12 px-1 py-1 text-xs border rounded text-center"
-                                                            />
-                                                            <span className="text-xs text-gray-400">°</span>
-                                                        </div>
+                                                    {/* Description */}
+                                                    <div>
+                                                        <label className="text-[10px] font-bold text-gray-600 block mb-1">Description</label>
+                                                        <textarea
+                                                            value={selectedElement.description || ''}
+                                                            onChange={e => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, description: e.target.value } : el))}
+                                                            placeholder="Optional description…"
+                                                            rows={2}
+                                                            className="w-full text-xs px-3 py-1.5 border border-indigo-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white resize-none" />
                                                     </div>
 
-                                                    {/* Shadow Controls */}
-                                                    <div className="mb-4 p-3 bg-gray-50 rounded-xl border border-gray-200">
-                                                        <label className="text-xs font-bold text-gray-700 mb-2 block uppercase tracking-wider">Shadow</label>
-
-                                                        <div className="space-y-3">
-                                                            {/* Shadow Color */}
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="text-xs text-gray-600 w-12">Color</span>
-                                                                <input
-                                                                    type="color"
-                                                                    value={selectedElement.shadowColor || '#000000'}
-                                                                    onChange={(e) => updateElementShadow({ shadowColor: e.target.value })}
-                                                                    className="w-8 h-8 rounded border cursor-pointer"
-                                                                />
-                                                                <button
-                                                                    onClick={() => updateElementShadow({ shadowColor: 'transparent', shadowBlur: 0 })}
-                                                                    className="text-xs text-gray-500 hover:text-gray-700"
-                                                                >
-                                                                    Clear
-                                                                </button>
+                                                    {/* ── Process ── */}
+                                                    {selectedElement.flowNodeType === 'fc-process' && (
+                                                        <>
+                                                            <div>
+                                                                <label className="text-[10px] font-bold text-gray-600 block mb-1">Assignee</label>
+                                                                <input type="text" value={selectedElement.assignee || ''}
+                                                                    onChange={e => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, assignee: e.target.value } : el))}
+                                                                    placeholder="Who performs this step?"
+                                                                    className="w-full text-xs px-3 py-1.5 border border-indigo-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white" />
                                                             </div>
-
-                                                            {/* Shadow Blur */}
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="text-xs text-gray-600 w-12">Blur</span>
-                                                                <input
-                                                                    type="range" min="0" max="30" step="1"
-                                                                    value={selectedElement.shadowBlur || 0}
-                                                                    onChange={(e) => updateElementShadow({ shadowBlur: parseInt(e.target.value) })}
-                                                                    className="flex-1"
-                                                                />
-                                                                <span className="text-xs w-8">{selectedElement.shadowBlur || 0}</span>
+                                                            <div>
+                                                                <label className="text-[10px] font-bold text-gray-600 block mb-1">Duration</label>
+                                                                <input type="text" value={selectedElement.duration || ''}
+                                                                    onChange={e => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, duration: e.target.value } : el))}
+                                                                    placeholder="e.g. 2 hours, 1 day"
+                                                                    className="w-full text-xs px-3 py-1.5 border border-indigo-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white" />
                                                             </div>
+                                                        </>
+                                                    )}
 
-                                                            {/* Shadow Offset X/Y */}
+                                                    {/* ── Decision ── */}
+                                                    {selectedElement.flowNodeType === 'fc-decision' && (
+                                                        <>
+                                                            <div>
+                                                                <label className="text-[10px] font-bold text-gray-600 block mb-1">Condition</label>
+                                                                <input type="text" value={selectedElement.condition || ''}
+                                                                    onChange={e => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, condition: e.target.value } : el))}
+                                                                    placeholder="e.g. Is approved?"
+                                                                    className="w-full text-xs px-3 py-1.5 border border-indigo-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white" />
+                                                            </div>
                                                             <div className="grid grid-cols-2 gap-2">
-                                                                <div className="flex items-center gap-1">
-                                                                    <span className="text-xs text-gray-600">X</span>
-                                                                    <input
-                                                                        type="number"
-                                                                        value={selectedElement.shadowOffsetX || 0}
-                                                                        onChange={(e) => updateElementShadow({ shadowOffsetX: parseInt(e.target.value) })}
-                                                                        className="w-full px-2 py-1 text-xs border rounded"
-                                                                    />
+                                                                <div>
+                                                                    <label className="text-[10px] font-bold text-green-700 block mb-0.5">Yes Branch</label>
+                                                                    <input type="text" value={selectedElement.yesBranch || 'Yes'}
+                                                                        onChange={e => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, yesBranch: e.target.value } : el))}
+                                                                        className="w-full text-xs px-2 py-1 border border-green-200 rounded-lg bg-green-50 focus:outline-none" />
                                                                 </div>
-                                                                <div className="flex items-center gap-1">
-                                                                    <span className="text-xs text-gray-600">Y</span>
-                                                                    <input
-                                                                        type="number"
-                                                                        value={selectedElement.shadowOffsetY || 0}
-                                                                        onChange={(e) => updateElementShadow({ shadowOffsetY: parseInt(e.target.value) })}
-                                                                        className="w-full px-2 py-1 text-xs border rounded"
-                                                                    />
+                                                                <div>
+                                                                    <label className="text-[10px] font-bold text-red-700 block mb-0.5">No Branch</label>
+                                                                    <input type="text" value={selectedElement.noBranch || 'No'}
+                                                                        onChange={e => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, noBranch: e.target.value } : el))}
+                                                                        className="w-full text-xs px-2 py-1 border border-red-200 rounded-lg bg-red-50 focus:outline-none" />
                                                                 </div>
                                                             </div>
-                                                        </div>
-                                                    </div>
+                                                        </>
+                                                    )}
 
-                                                    {/* Corner Radius - Only for rectangles */}
-                                                    {selectedElement.type === 'rectangle' && (
-                                                        <div className="mb-4">
-                                                            <label className="text-xs font-semibold text-gray-600 mb-1 block">Corner Radius</label>
-                                                            <div className="flex items-center gap-2">
-                                                                <input
-                                                                    type="range" min="0" max="50" step="1"
-                                                                    value={selectedElement.cornerRadius || 0}
-                                                                    onChange={(e) => updateElementShadow({ cornerRadius: parseInt(e.target.value) })}
-                                                                    className="flex-1"
-                                                                />
-                                                                <span className="text-xs w-10">{selectedElement.cornerRadius || 0}px</span>
+                                                    {/* ── Terminal (Start/End) ── */}
+                                                    {selectedElement.flowNodeType === 'fc-terminal' && (
+                                                        <div>
+                                                            <label className="text-[10px] font-bold text-gray-600 block mb-1">Terminal Type</label>
+                                                            <div className="grid grid-cols-2 gap-2">
+                                                                <button onClick={() => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, terminalType: 'start' } : el))}
+                                                                    className={`py-1.5 text-[11px] font-bold rounded-xl border transition-colors ${
+                                                                        (selectedElement.terminalType || 'start') === 'start' ? 'bg-green-600 text-white border-green-700' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                                                                    }`}>▶ Start</button>
+                                                                <button onClick={() => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, terminalType: 'end' } : el))}
+                                                                    className={`py-1.5 text-[11px] font-bold rounded-xl border transition-colors ${
+                                                                        selectedElement.terminalType === 'end' ? 'bg-red-600 text-white border-red-700' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                                                                    }`}>⏹ End</button>
                                                             </div>
                                                         </div>
                                                     )}
 
-                                                    {/* Font Controls - Only for text elements */}
-                                                    {selectedElement.type === 'text' && (
-                                                        <div className="mb-4 p-3 bg-purple-50 rounded-xl border border-purple-200">
-                                                            <label className="text-xs font-bold text-purple-700 mb-2 block uppercase tracking-wider">Font Settings</label>
-
-                                                            {/* Font Family */}
-                                                            <div className="mb-3">
-                                                                <label className="text-xs text-gray-600 mb-1 block">Font Family</label>
-                                                                <select
-                                                                    value={selectedElement.fontFamily || 'Arial'}
-                                                                    onChange={(e) => updateSelectedFont({ fontFamily: e.target.value })}
-                                                                    className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded-lg bg-white"
-                                                                >
-                                                                    {fontFamilies.map(font => (
-                                                                        <option key={font} value={font} style={{ fontFamily: font }}>{font}</option>
-                                                                    ))}
-                                                                </select>
-                                                            </div>
-
-                                                            {/* Font Size */}
-                                                            <div className="mb-3">
-                                                                <label className="text-xs text-gray-600 mb-1 block">Font Size</label>
-                                                                <div className="flex items-center gap-2">
-                                                                    <input
-                                                                        type="range" min="8" max="120"
-                                                                        value={selectedElement.fontSize || 24}
-                                                                        onChange={(e) => updateSelectedFont({ fontSize: parseInt(e.target.value) })}
-                                                                        className="flex-1"
-                                                                    />
-                                                                    <input
-                                                                        type="number" min="8" max="200"
-                                                                        value={selectedElement.fontSize || 24}
-                                                                        onChange={(e) => updateSelectedFont({ fontSize: parseInt(e.target.value) })}
-                                                                        className="w-14 px-2 py-1 text-xs border border-gray-200 rounded text-center"
-                                                                    />
+                                                    {/* ── Input/Output ── */}
+                                                    {selectedElement.flowNodeType === 'fc-io' && (
+                                                        <>
+                                                            <div>
+                                                                <label className="text-[10px] font-bold text-gray-600 block mb-1">I/O Type</label>
+                                                                <div className="grid grid-cols-2 gap-2">
+                                                                    <button onClick={() => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, ioType: 'input' } : el))}
+                                                                        className={`py-1.5 text-[11px] font-bold rounded-xl border transition-colors ${
+                                                                            (selectedElement.ioType || 'input') === 'input' ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-white text-gray-600 border-gray-200'
+                                                                        }`}>↓ Input</button>
+                                                                    <button onClick={() => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, ioType: 'output' } : el))}
+                                                                        className={`py-1.5 text-[11px] font-bold rounded-xl border transition-colors ${
+                                                                            selectedElement.ioType === 'output' ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-white text-gray-600 border-gray-200'
+                                                                        }`}>↑ Output</button>
                                                                 </div>
                                                             </div>
+                                                            <div>
+                                                                <label className="text-[10px] font-bold text-gray-600 block mb-1">Data Source</label>
+                                                                <input type="text" value={selectedElement.dataSource || ''}
+                                                                    onChange={e => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, dataSource: e.target.value } : el))}
+                                                                    placeholder="e.g. User form, API, File"
+                                                                    className="w-full text-xs px-3 py-1.5 border border-indigo-200 rounded-xl focus:outline-none bg-white" />
+                                                            </div>
+                                                        </>
+                                                    )}
 
-                                                            {/* Bold / Italic Toggles */}
-                                                            <div className="flex gap-2">
+                                                    {/* ── Database ── */}
+                                                    {selectedElement.flowNodeType === 'fc-database' && (
+                                                        <>
+                                                            <div>
+                                                                <label className="text-[10px] font-bold text-gray-600 block mb-1">Database Type</label>
+                                                                <select value={selectedElement.dbType || 'sql'}
+                                                                    onChange={e => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, dbType: e.target.value } : el))}
+                                                                    className="w-full text-xs px-3 py-1.5 border border-indigo-200 rounded-xl focus:outline-none bg-white">
+                                                                    <option value="sql">SQL Database</option>
+                                                                    <option value="nosql">NoSQL Database</option>
+                                                                    <option value="cache">Cache Store</option>
+                                                                    <option value="file">File Storage</option>
+                                                                    <option value="cloud">Cloud Storage</option>
+                                                                </select>
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[10px] font-bold text-gray-600 block mb-1">Table / Collection</label>
+                                                                <input type="text" value={selectedElement.tableName || ''}
+                                                                    onChange={e => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, tableName: e.target.value } : el))}
+                                                                    placeholder="e.g. users, orders"
+                                                                    className="w-full text-xs px-3 py-1.5 border border-indigo-200 rounded-xl focus:outline-none bg-white" />
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[10px] font-bold text-gray-600 block mb-1">Operation</label>
+                                                                <select value={selectedElement.dbOperation || 'read'}
+                                                                    onChange={e => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, dbOperation: e.target.value } : el))}
+                                                                    className="w-full text-xs px-3 py-1.5 border border-indigo-200 rounded-xl focus:outline-none bg-white">
+                                                                    <option value="read">Read / Query</option>
+                                                                    <option value="write">Write / Insert</option>
+                                                                    <option value="update">Update</option>
+                                                                    <option value="delete">Delete</option>
+                                                                </select>
+                                                            </div>
+                                                        </>
+                                                    )}
+
+                                                    {/* ── Document ── */}
+                                                    {selectedElement.flowNodeType === 'fc-document' && (
+                                                        <>
+                                                            <div>
+                                                                <label className="text-[10px] font-bold text-gray-600 block mb-1">Document Type</label>
+                                                                <select value={selectedElement.docType || 'report'}
+                                                                    onChange={e => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, docType: e.target.value } : el))}
+                                                                    className="w-full text-xs px-3 py-1.5 border border-indigo-200 rounded-xl focus:outline-none bg-white">
+                                                                    <option value="report">Report</option>
+                                                                    <option value="form">Form</option>
+                                                                    <option value="invoice">Invoice</option>
+                                                                    <option value="email">Email</option>
+                                                                    <option value="log">Log Entry</option>
+                                                                    <option value="other">Other</option>
+                                                                </select>
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[10px] font-bold text-gray-600 block mb-1">Template</label>
+                                                                <input type="text" value={selectedElement.template || ''}
+                                                                    onChange={e => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, template: e.target.value } : el))}
+                                                                    placeholder="Template name"
+                                                                    className="w-full text-xs px-3 py-1.5 border border-indigo-200 rounded-xl focus:outline-none bg-white" />
+                                                            </div>
+                                                        </>
+                                                    )}
+
+                                                    {/* ── Predefined ── */}
+                                                    {selectedElement.flowNodeType === 'fc-predefined' && (
+                                                        <>
+                                                            <div>
+                                                                <label className="text-[10px] font-bold text-gray-600 block mb-1">Subroutine Name</label>
+                                                                <input type="text" value={selectedElement.subroutine || ''}
+                                                                    onChange={e => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, subroutine: e.target.value } : el))}
+                                                                    placeholder="Referenced process name"
+                                                                    className="w-full text-xs px-3 py-1.5 border border-indigo-200 rounded-xl focus:outline-none bg-white" />
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[10px] font-bold text-gray-600 block mb-1">Reference ID</label>
+                                                                <input type="text" value={selectedElement.referenceId || ''}
+                                                                    onChange={e => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, referenceId: e.target.value } : el))}
+                                                                    placeholder="e.g. SUB-001"
+                                                                    className="w-full text-xs px-3 py-1.5 border border-indigo-200 rounded-xl focus:outline-none bg-white" />
+                                                            </div>
+                                                        </>
+                                                    )}
+
+                                                    {/* ── Manual Input ── */}
+                                                    {selectedElement.flowNodeType === 'fc-manual' && (
+                                                        <>
+                                                            <div>
+                                                                <label className="text-[10px] font-bold text-gray-600 block mb-1">Input Method</label>
+                                                                <select value={selectedElement.inputMethod || 'keyboard'}
+                                                                    onChange={e => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, inputMethod: e.target.value } : el))}
+                                                                    className="w-full text-xs px-3 py-1.5 border border-indigo-200 rounded-xl focus:outline-none bg-white">
+                                                                    <option value="keyboard">Keyboard</option>
+                                                                    <option value="form">Form Entry</option>
+                                                                    <option value="scan">Scan / Barcode</option>
+                                                                    <option value="voice">Voice Input</option>
+                                                                    <option value="other">Other</option>
+                                                                </select>
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[10px] font-bold text-gray-600 block mb-1">Required Fields</label>
+                                                                <input type="text" value={selectedElement.requiredFields || ''}
+                                                                    onChange={e => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, requiredFields: e.target.value } : el))}
+                                                                    placeholder="e.g. Name, Email, Amount"
+                                                                    className="w-full text-xs px-3 py-1.5 border border-indigo-200 rounded-xl focus:outline-none bg-white" />
+                                                            </div>
+                                                        </>
+                                                    )}
+
+                                                    {/* ── Delay ── */}
+                                                    {selectedElement.flowNodeType === 'fc-delay' && (
+                                                        <>
+                                                            <div>
+                                                                <label className="text-[10px] font-bold text-gray-600 block mb-1">Wait Duration</label>
+                                                                <input type="text" value={selectedElement.waitDuration || ''}
+                                                                    onChange={e => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, waitDuration: e.target.value } : el))}
+                                                                    placeholder="e.g. 24 hours, 3 days"
+                                                                    className="w-full text-xs px-3 py-1.5 border border-indigo-200 rounded-xl focus:outline-none bg-white" />
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[10px] font-bold text-gray-600 block mb-1">Reason</label>
+                                                                <input type="text" value={selectedElement.waitReason || ''}
+                                                                    onChange={e => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, waitReason: e.target.value } : el))}
+                                                                    placeholder="Why is there a wait?"
+                                                                    className="w-full text-xs px-3 py-1.5 border border-indigo-200 rounded-xl focus:outline-none bg-white" />
+                                                            </div>
+                                                        </>
+                                                    )}
+
+                                                    {/* ── Connector (circle) ── */}
+                                                    {selectedElement.flowNodeType === 'fc-connector' && (
+                                                        <div>
+                                                            <label className="text-[10px] font-bold text-gray-600 block mb-1">Reference Label</label>
+                                                            <input type="text" value={selectedElement.refLabel || ''}
+                                                                onChange={e => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, refLabel: e.target.value } : el))}
+                                                                placeholder="e.g. A, B, 1, 2"
+                                                                className="w-full text-xs px-3 py-1.5 border border-indigo-200 rounded-xl focus:outline-none bg-white" />
+                                                            <p className="text-[9px] text-gray-400 mt-1">On-page connector reference</p>
+                                                        </div>
+                                                    )}
+
+                                                    {/* ── Annotation ── */}
+                                                    {selectedElement.flowNodeType === 'fc-annotation' && (
+                                                        <div>
+                                                            <label className="text-[10px] font-bold text-gray-600 block mb-1">Note</label>
+                                                            <textarea value={selectedElement.noteText || ''}
+                                                                onChange={e => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, noteText: e.target.value } : el))}
+                                                                placeholder="Add a detailed note…"
+                                                                rows={3}
+                                                                className="w-full text-xs px-3 py-1.5 border border-indigo-200 rounded-xl focus:outline-none bg-white resize-none" />
+                                                        </div>
+                                                    )}
+
+                                                    {/* ── Data Store ── */}
+                                                    {selectedElement.flowNodeType === 'fc-data' && (
+                                                        <>
+                                                            <div>
+                                                                <label className="text-[10px] font-bold text-gray-600 block mb-1">Storage Type</label>
+                                                                <select value={selectedElement.storageType || 'internal'}
+                                                                    onChange={e => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, storageType: e.target.value } : el))}
+                                                                    className="w-full text-xs px-3 py-1.5 border border-indigo-200 rounded-xl focus:outline-none bg-white">
+                                                                    <option value="internal">Internal Data</option>
+                                                                    <option value="external">External Source</option>
+                                                                    <option value="api">API Endpoint</option>
+                                                                    <option value="file">File System</option>
+                                                                </select>
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[10px] font-bold text-gray-600 block mb-1">Data Format</label>
+                                                                <input type="text" value={selectedElement.dataFormat || ''}
+                                                                    onChange={e => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, dataFormat: e.target.value } : el))}
+                                                                    placeholder="e.g. JSON, CSV, XML"
+                                                                    className="w-full text-xs px-3 py-1.5 border border-indigo-200 rounded-xl focus:outline-none bg-white" />
+                                                            </div>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            <div className="space-y-4">
+                                                {/* Opacity */}
+                                                <div className="space-y-3 p-4 bg-purple-50/30 rounded-2xl border border-purple-100/50">
+                                                    <div className="flex items-center justify-between">
+                                                        <label className="text-[10px] font-bold text-gray-700 uppercase">Transparency</label>
+                                                        <span className="text-[10px] font-black text-purple-700">{Math.round((selectedElement.opacity ?? 1) * 100)}%</span>
+                                                    </div>
+                                                    <input
+                                                        type="range" min="0" max="1" step="0.1"
+                                                        value={selectedElement.opacity ?? 1}
+                                                        onChange={(e) => updateElementOpacity(selectedElement.id, parseFloat(e.target.value))}
+                                                        className="w-full h-1.5 bg-purple-100 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                                                    />
+                                                </div>
+
+                                                {/* Rotation */}
+                                                <div className="space-y-3 p-4 bg-gray-50/50 rounded-2xl border border-gray-100">
+                                                    <div className="flex items-center justify-between">
+                                                        <label className="text-[10px] font-bold text-gray-700 ml-1 uppercase flex items-center gap-1.5">
+                                                            <RotateCw size={12} className="text-gray-500" />
+                                                            Rotation
+                                                        </label>
+                                                        <div className="flex items-center gap-0.5">
+                                                            <input
+                                                                type="number"
+                                                                value={Math.round(selectedElement.rotation || 0)}
+                                                                onChange={(e) => {
+                                                                    const val = parseInt(e.target.value) || 0;
+                                                                    setElements(elements.map(el => el.id === selectedId ? { ...el, rotation: ((val % 360) + 360) % 360 } : el));
+                                                                }}
+                                                                className="w-10 bg-transparent text-[11px] font-bold text-purple-700 text-right focus:outline-none"
+                                                            />
+                                                            <span className="text-[10px] font-bold text-gray-500">°</span>
+                                                        </div>
+                                                    </div>
+                                                    <input
+                                                        type="range" min="0" max="360"
+                                                        value={selectedElement.rotation || 0}
+                                                        onChange={(e) => {
+                                                            const val = parseInt(e.target.value);
+                                                            setElements(elements.map(el => el.id === selectedId ? { ...el, rotation: val } : el));
+                                                        }}
+                                                        className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                                                    />
+                                                </div>
+
+                                                {/* Font Controls */}
+                                                {selectedElement.type === 'text' && (
+                                                    <div className="space-y-4 p-4 bg-purple-50/50 rounded-2xl border border-purple-100">
+                                                        <label className="text-[11px] font-black text-purple-800 uppercase tracking-widest block italic">Typography</label>
+                                                        <div className="space-y-4">
+                                                            <select
+                                                                value={selectedElement.fontFamily || 'Arial'}
+                                                                onChange={(e) => updateSelectedFont({ fontFamily: e.target.value })}
+                                                                className="w-full px-3 py-2 text-[11px] font-bold border border-purple-100 rounded-xl bg-white/80 shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all font-sans"
+                                                            >
+                                                                {fontFamilies.map(font => (
+                                                                    <option key={font} value={font} style={{ fontFamily: font }}>{font}</option>
+                                                                ))}
+                                                            </select>
+                                                            <div className="flex items-center gap-3">
+                                                                <input
+                                                                    type="range" min="8" max="120"
+                                                                    value={selectedElement.fontSize || 24}
+                                                                    onChange={(e) => updateSelectedFont({ fontSize: parseInt(e.target.value) })}
+                                                                    className="flex-1 h-1.5 bg-purple-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                                                                />
+                                                                <span className="text-[11px] font-bold text-purple-700 w-10 text-right">{selectedElement.fontSize || 24}PX</span>
+                                                            </div>
+                                                            <div className="grid grid-cols-2 gap-2">
                                                                 <button
                                                                     onClick={() => {
-                                                                        const currentStyle = selectedElement.fontStyle || 'normal';
-                                                                        const isBold = currentStyle.includes('bold');
-                                                                        const isItalic = currentStyle.includes('italic');
-                                                                        let newStyle = isBold ? (isItalic ? 'italic' : 'normal') : (isItalic ? 'bold italic' : 'bold');
-                                                                        updateSelectedFont({ fontStyle: newStyle });
+                                                                        const style = selectedElement.fontStyle || 'normal';
+                                                                        const bold = style.includes('bold');
+                                                                        const italic = style.includes('italic');
+                                                                        updateSelectedFont({ fontStyle: bold ? (italic ? 'italic' : 'normal') : (italic ? 'bold italic' : 'bold') });
                                                                     }}
-                                                                    className={`flex-1 py-2 px-3 text-xs font-bold rounded-lg border transition-colors ${(selectedElement.fontStyle || '').includes('bold')
-                                                                        ? 'bg-purple-600 text-white border-purple-600'
-                                                                        : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
-                                                                        }`}
+                                                                    className={`py-2 px-3 text-xs font-black rounded-xl border transition-all ${selectedElement.fontStyle?.includes('bold') ? 'bg-purple-600 text-white border-purple-600 shadow-md transform scale-105' : 'bg-white text-gray-600 border-gray-100 hover:border-purple-200'}`}
                                                                 >
                                                                     B
                                                                 </button>
                                                                 <button
                                                                     onClick={() => {
-                                                                        const currentStyle = selectedElement.fontStyle || 'normal';
-                                                                        const isBold = currentStyle.includes('bold');
-                                                                        const isItalic = currentStyle.includes('italic');
-                                                                        let newStyle = isItalic ? (isBold ? 'bold' : 'normal') : (isBold ? 'bold italic' : 'italic');
-                                                                        updateSelectedFont({ fontStyle: newStyle });
+                                                                        const style = selectedElement.fontStyle || 'normal';
+                                                                        const bold = style.includes('bold');
+                                                                        const italic = style.includes('italic');
+                                                                        updateSelectedFont({ fontStyle: italic ? (bold ? 'bold' : 'normal') : (bold ? 'bold italic' : 'italic') });
                                                                     }}
-                                                                    className={`flex-1 py-2 px-3 text-xs italic rounded-lg border transition-colors ${(selectedElement.fontStyle || '').includes('italic')
-                                                                        ? 'bg-purple-600 text-white border-purple-600'
-                                                                        : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
-                                                                        }`}
+                                                                    className={`py-2 px-3 text-xs italic font-black rounded-xl border transition-all ${selectedElement.fontStyle?.includes('italic') ? 'bg-purple-600 text-white border-purple-600 shadow-md transform scale-105' : 'bg-white text-gray-600 border-gray-100 hover:border-purple-200'}`}
                                                                 >
                                                                     I
                                                                 </button>
                                                             </div>
-
-                                                            {/* Text Alignment */}
-                                                            <div className="mb-4">
-                                                                <label className="text-xs font-semibold text-gray-600 mb-2 block">Text Align</label>
-                                                                <div className="grid grid-cols-3 gap-1">
+                                                            <div className="flex p-1 bg-white border border-gray-100 rounded-xl gap-1">
+                                                                {['left', 'center', 'right'].map(align => (
                                                                     <button
-                                                                        onClick={() => updateSelectedFont({ textAlign: 'left' })}
-                                                                        className={`py-2 px-3 text-xs rounded-lg border transition-colors ${(selectedElement.textAlign || 'left') === 'left' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'}`}
+                                                                        key={align}
+                                                                        onClick={() => updateSelectedFont({ textAlign: align })}
+                                                                        className={`flex-1 py-1.5 rounded-lg transition-all flex items-center justify-center ${(selectedElement.textAlign || 'left') === align ? 'bg-purple-100 text-purple-700' : 'text-gray-500 hover:bg-gray-50'}`}
                                                                     >
-                                                                        <AlignLeft size={14} className="mx-auto" />
+                                                                        {align === 'left' && <AlignLeft size={14} />}
+                                                                        {align === 'center' && <AlignCenter size={14} />}
+                                                                        {align === 'right' && <AlignRight size={14} />}
                                                                     </button>
-                                                                    <button
-                                                                        onClick={() => updateSelectedFont({ textAlign: 'center' })}
-                                                                        className={`py-2 px-3 text-xs rounded-lg border transition-colors ${selectedElement.textAlign === 'center' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'}`}
-                                                                    >
-                                                                        <AlignCenter size={14} className="mx-auto" />
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => updateSelectedFont({ textAlign: 'right' })}
-                                                                        className={`py-2 px-3 text-xs rounded-lg border transition-colors ${selectedElement.textAlign === 'right' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'}`}
-                                                                    >
-                                                                        <AlignRight size={14} className="mx-auto" />
-                                                                    </button>
-                                                                </div>
+                                                                ))}
                                                             </div>
                                                         </div>
-                                                    )}
-
-                                                    {/* Z-Index Controls */}
-                                                    <div className="mb-4">
-                                                        <label className="text-xs font-semibold text-gray-600 mb-2 block">Layer Order</label>
-                                                        <div className="grid grid-cols-4 gap-1">
-                                                            <button onClick={sendToBack} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Send to Back"><ChevronsDown size={14} /></button>
-                                                            <button onClick={sendBackward} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Send Backward"><ChevronDown size={14} /></button>
-                                                            <button onClick={bringForward} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Bring Forward"><ChevronUp size={14} /></button>
-                                                            <button onClick={bringToFront} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Bring to Front"><ChevronsUp size={14} /></button>
-                                                        </div>
                                                     </div>
+                                                )}
 
-                                                    {/* Alignment Controls */}
-                                                    <div className="mb-4">
-                                                        <label className="text-xs font-semibold text-gray-600 mb-2 block">Align</label>
-                                                        <div className="grid grid-cols-3 gap-1">
-                                                            <button onClick={() => alignSelected('left')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Left"><AlignLeft size={14} /></button>
-                                                            <button onClick={() => alignSelected('center')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Center"><AlignCenter size={14} /></button>
-                                                            <button onClick={() => alignSelected('right')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Right"><AlignRight size={14} /></button>
-                                                            <button onClick={() => alignSelected('top')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Top"><AlignStartVertical size={14} /></button>
-                                                            <button onClick={() => alignSelected('middle')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Middle"><AlignCenterVertical size={14} /></button>
-                                                            <button onClick={() => alignSelected('bottom')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Bottom"><AlignEndVertical size={14} /></button>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Quick Actions */}
-                                                    <div className="grid grid-cols-2 gap-2">
-                                                        <button onClick={copySelected} className="flex items-center justify-center gap-1 p-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-medium text-gray-700">
-                                                            <Copy size={12} /> Copy
-                                                        </button>
-                                                        <button onClick={duplicateSelected} className="flex items-center justify-center gap-1 p-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-medium text-gray-700">
-                                                            <Clipboard size={12} /> Duplicate
+                                                {/* Drop Shadow Group */}
+                                                <div className="space-y-4 p-4 bg-gray-50/50 rounded-2xl border border-gray-100">
+                                                    <div className="flex items-center justify-between px-1">
+                                                        <label className="text-[10px] font-bold text-gray-700 uppercase">Drop Shadow</label>
+                                                        <button
+                                                            onClick={() => updateElementShadow({ shadowColor: 'transparent', shadowBlur: 0 })}
+                                                            className="text-[9px] font-black text-gray-400 hover:text-red-500 transition-colors uppercase"
+                                                        >
+                                                            Reset
                                                         </button>
                                                     </div>
-
-                                                    <button onClick={deleteSelected} className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-xl font-medium text-sm hover:bg-red-100 transition-colors border border-red-200">
-                                                        <Trash2 size={14} /> Delete
-                                                    </button>
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="flex-1 flex items-center gap-2 p-1.5 bg-white rounded-xl border border-gray-100">
+                                                            <input
+                                                                type="color"
+                                                                value={selectedElement.shadowColor || '#000000'}
+                                                                onChange={(e) => updateElementShadow({ shadowColor: e.target.value })}
+                                                                className="w-6 h-6 rounded-md cursor-pointer border-0 p-0 bg-transparent"
+                                                            />
+                                                            <span className="text-[9px] font-mono font-bold text-gray-400 uppercase">HEX</span>
+                                                        </div>
+                                                        <div className="flex-1 space-y-1">
+                                                            <div className="flex justify-between">
+                                                                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter">Blur</span>
+                                                                <span className="text-[9px] font-black text-purple-600">{selectedElement.shadowBlur || 0}PX</span>
+                                                            </div>
+                                                            <input
+                                                                type="range" min="0" max="30"
+                                                                value={selectedElement.shadowBlur || 0}
+                                                                onChange={(e) => updateElementShadow({ shadowBlur: parseInt(e.target.value) })}
+                                                                className="w-full h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                                                            />
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                            </>
-                                        )}
 
-                                        {!selectedElement && (
-                                            <div className="text-center text-gray-400 mt-8">
-                                                <div className="text-3xl mb-2">🎨</div>
-                                                <div className="text-xs">Select an element to edit</div>
+                                                {/* Corner Radius */}
+                                                {selectedElement.type === 'rectangle' && (
+                                                    <div className="space-y-3 p-4 bg-gray-50/50 rounded-2xl border border-gray-100">
+                                                        <div className="flex items-center justify-between">
+                                                            <label className="text-[10px] font-bold text-gray-600 uppercase">Rounding</label>
+                                                            <span className="text-[10px] font-black text-purple-600">{selectedElement.cornerRadius || 0}PX</span>
+                                                        </div>
+                                                        <input
+                                                            type="range" min="0" max="50"
+                                                            value={selectedElement.cornerRadius || 0}
+                                                            onChange={(e) => updateElementShadow({ cornerRadius: parseInt(e.target.value) })}
+                                                            className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                                                        />
+                                                    </div>
+                                                )}
+
+                                                {/* Layering & Alignment */}
+                                                <div className="space-y-4 pt-4">
+                                                    <div className="grid grid-cols-4 gap-2">
+                                                        <button onClick={sendToBack} className="p-2.5 bg-white border border-gray-100 hover:border-purple-200 hover:shadow-sm rounded-xl text-gray-500 transition-all flex items-center justify-center"><ChevronsDown size={14} /></button>
+                                                        <button onClick={sendBackward} className="p-2.5 bg-white border border-gray-100 hover:border-purple-200 hover:shadow-sm rounded-xl text-gray-500 transition-all flex items-center justify-center"><ChevronDown size={14} /></button>
+                                                        <button onClick={bringForward} className="p-2.5 bg-white border border-gray-100 hover:border-purple-200 hover:shadow-sm rounded-xl text-gray-500 transition-all flex items-center justify-center"><ChevronUp size={14} /></button>
+                                                        <button onClick={bringToFront} className="p-2.5 bg-white border border-gray-100 hover:border-purple-200 hover:shadow-sm rounded-xl text-gray-500 transition-all flex items-center justify-center"><ChevronsUp size={14} /></button>
+                                                    </div>
+                                                    <div className="grid grid-cols-3 gap-2">
+                                                        <button onClick={copySelected} className="flex items-center justify-center gap-2 py-2.5 px-3 bg-gray-100/50 hover:bg-gray-100 border border-gray-100 rounded-xl text-[10px] font-black text-gray-600 uppercase transition-all"><Copy size={12} /> Copy</button>
+                                                        <button onClick={duplicateSelected} className="flex items-center justify-center gap-2 py-2.5 px-3 bg-gray-100/50 hover:bg-gray-100 border border-gray-100 rounded-xl text-[10px] font-black text-gray-600 uppercase transition-all"><Clipboard size={12} /> Clone</button>
+                                                        <button onClick={deleteSelected} className="flex items-center justify-center gap-2 py-2.5 px-3 bg-red-50 hover:bg-red-100 border border-red-100 rounded-xl text-[10px] font-black text-red-600 uppercase transition-all"><Trash2 size={12} /> Del</button>
+                                                    </div>
+                                                </div>
                                             </div>
-                                        )}
-                                    </div>
-                                )}
-
-                                {/* LAYERS TAB */}
-                                {rightPanelTab === 'layers' && (
-                                    <div>
-                                        <div className="flex items-center justify-between mb-3">
-                                            <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider">Layers ({elements.length})</h4>
                                         </div>
+                                    )}
+
+                                    {!selectedElement && (
+                                        <div className="h-64 flex flex-col items-center justify-center text-center space-y-4 animate-in fade-in zoom-in-95 duration-700">
+                                            <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center border border-gray-100 shadow-inner">
+                                                <MousePointer2 size={24} className="text-gray-300 transform -rotate-12" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <p className="text-[11px] font-black text-gray-800 uppercase tracking-widest">No Selection</p>
+                                                <p className="text-[10px] font-bold text-gray-400 max-w-[140px] leading-relaxed">Select an object on the canvas to edit its properties</p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* LAYERS TAB */}
+                            {rightPanelTab === 'layers' && (
+                                <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                                    <div className="flex items-center justify-between px-1">
+                                        <h4 className="text-[11px] font-black text-gray-500 uppercase tracking-[0.1em] italic">Project Layers</h4>
+                                        <span className="text-[10px] font-black text-purple-700 bg-purple-100/50 px-2 py-0.5 rounded-full">{elements.length}</span>
+                                    </div>
+                                    <div className="rounded-2xl border border-gray-100 overflow-hidden bg-white shadow-sm">
                                         <LayersPanel
                                             elements={elements}
                                             selectedIds={selectedId ? [selectedId] : []}
@@ -2464,94 +4027,50 @@ export default function CanvasPage() {
                                             onOpacityChange={updateElementOpacity}
                                         />
                                     </div>
-                                )}
+                                </div>
+                            )}
 
-                                {/* EXPORT TAB */}
-                                {rightPanelTab === 'export' && (
+                            {/* EXPORT TAB */}
+                            {rightPanelTab === 'export' && (
+                                <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
                                     <div className="space-y-4">
-                                        <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">Export Canvas</h4>
-
-                                        <button onClick={exportAsPNG} className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl font-medium text-sm hover:from-purple-700 hover:to-indigo-700 transition-all shadow-lg shadow-purple-500/30">
-                                            <Download size={16} /> Export as PNG
-                                        </button>
-
-                                        <button onClick={exportAsJPG} className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium text-sm hover:bg-gray-200 transition-colors border border-gray-200">
-                                            <Download size={16} /> Export as JPG
-                                        </button>
-
-                                        <div className="pt-4 border-t border-gray-100 text-xs text-gray-500">
-                                            <p className="mb-2"><strong>Tips:</strong></p>
-                                            <ul className="space-y-1 text-gray-400">
-                                                <li>• PNG: Best for transparent backgrounds</li>
-                                                <li>• JPG: Smaller file size, no transparency</li>
-                                            </ul>
-                                        </div>
-
-                                        <div className="pt-4 border-t border-gray-100">
-                                            <h5 className="text-xs font-bold text-gray-700 mb-2">Keyboard Shortcuts</h5>
-                                            <div className="text-xs text-gray-500 space-y-1">
-                                                <div className="flex justify-between"><span>Copy</span><kbd className="bg-gray-100 px-1 rounded">⌘C</kbd></div>
-                                                <div className="flex justify-between"><span>Paste</span><kbd className="bg-gray-100 px-1 rounded">⌘V</kbd></div>
-                                                <div className="flex justify-between"><span>Duplicate</span><kbd className="bg-gray-100 px-1 rounded">⌘D</kbd></div>
-                                                <div className="flex justify-between"><span>Undo</span><kbd className="bg-gray-100 px-1 rounded">⌘Z</kbd></div>
-                                                <div className="flex justify-between"><span>Redo</span><kbd className="bg-gray-100 px-1 rounded">⌘⇧Z</kbd></div>
-                                                <div className="flex justify-between"><span>Bring Forward</span><kbd className="bg-gray-100 px-1 rounded">]</kbd></div>
-                                                <div className="flex justify-between"><span>Send Backward</span><kbd className="bg-gray-100 px-1 rounded">[</kbd></div>
-                                                <div className="flex justify-between"><span>Snap to Grid</span><kbd className="bg-gray-100 px-1 rounded">G</kbd></div>
-                                                <div className="flex justify-between"><span>Delete</span><kbd className="bg-gray-100 px-1 rounded">Del</kbd></div>
-                                            </div>
+                                        <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Production Export</h4>
+                                        <div className="grid gap-3">
+                                            <button onClick={exportAsPNG} className="group relative w-full flex items-center justify-between gap-3 p-4 bg-gradient-to-br from-purple-600 to-indigo-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest hover:shadow-xl hover:shadow-purple-500/30 transition-all transform hover:-translate-y-0.5 overflow-hidden">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="p-2 bg-white/20 rounded-xl backdrop-blur-md"><Download size={18} /></div>
+                                                    <span>Export as PNG</span>
+                                                </div>
+                                                <span className="opacity-40 group-hover:opacity-100 transition-opacity">HIGH RES</span>
+                                            </button>
+                                            <button onClick={exportAsJPG} className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-white border border-gray-100 text-gray-700 rounded-2xl font-black text-[11px] uppercase tracking-widest hover:border-purple-200 hover:bg-purple-50/30 transition-all">
+                                                <Download size={16} className="text-gray-400" /> Export as JPG
+                                            </button>
                                         </div>
                                     </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                ) : null}
 
-                {/* Collaboration share panel */}
-                <CollaborationPanel
-                    isOpen={showSharePanel}
-                    onClose={() => setShowSharePanel(false)}
-                    isShared={isShared}
-                    onToggleShare={toggleShare}
-                    shareKey={shareKey}
-                    onGenerateKey={generateShareKey}
-                    activeUsers={activeUsers}
-                    ownerUid={canvasOwnerRef.current}
-                    currentUserUid={user?.uid}
-                />
-
-                {/* Mode Placeholders */}
-                {workspaceMode === 'flowchart' && (
-                    <div className="flex-1 flex items-center justify-center bg-white">
-                        <div className="text-center">
-                            <FileJson size={64} className="mx-auto mb-4 text-purple-400 opacity-50" />
-                            <h2 className="text-2xl font-bold text-gray-800">Flowchart Mode</h2>
-                            <p className="text-gray-500">Coming Soon: A powerful flowchart and diagram builder.</p>
-                            <button
-                                onClick={() => setWorkspaceMode('drawing')}
-                                className="mt-6 px-6 py-2 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 transition-colors"
-                            >
-                                Back to Drawing
-                            </button>
+                                    <div className="space-y-4 pt-6">
+                                        <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Hotkeys Reference</h4>
+                                        <div className="p-4 bg-gray-50/50 rounded-2xl border border-gray-100 space-y-3">
+                                            {[
+                                                { label: 'Undo/Redo', key: '⌘Z / ⌘⇧Z' },
+                                                { label: 'Duplicate', key: '⌘D' },
+                                                { label: 'Layering', key: '[ / ]' },
+                                                { label: 'Delete', key: 'Delete' },
+                                                { label: 'Grid Snap', key: 'G' }
+                                            ].map((item, i) => (
+                                                <div key={i} className="flex justify-between items-center text-[10px] font-bold">
+                                                    <span className="text-gray-500">{item.label}</span>
+                                                    <kbd className="px-2 py-0.5 bg-white border border-gray-200 rounded-lg text-[9px] text-gray-400 font-mono shadow-sm">{item.key}</kbd>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
-                )}
-                {workspaceMode === 'poster' && (
-                    <div className="flex-1 flex items-center justify-center bg-white">
-                        <div className="text-center">
-                            <LayoutTemplate size={64} className="mx-auto mb-4 text-purple-400 opacity-50" />
-                            <h2 className="text-2xl font-bold text-gray-800">Poster Mode</h2>
-                            <p className="text-gray-500">Coming Soon: A professional poster and canvas designer.</p>
-                            <button
-                                onClick={() => setWorkspaceMode('drawing')}
-                                className="mt-6 px-6 py-2 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 transition-colors"
-                            >
-                                Back to Drawing
-                            </button>
-                        </div>
-                    </div>
-                )}
+                </div>
             </div>
         </div>
     );
