@@ -916,13 +916,13 @@ export default function CanvasPage() {
                 </div>
 
                 {/* Sidebar toggle tab */}
-                <div className="flex-shrink-0 flex items-center bg-white border-r border-gray-200">
+                <div className="flex-shrink-0 flex items-center">
                     <button
                         onClick={() => setSidebarOpen(s => !s)}
-                        className="h-16 w-4 flex items-center justify-center bg-white hover:bg-purple-50 hover:text-purple-600 text-gray-400 transition-colors border-y border-gray-200 rounded-r-lg shadow-sm"
+                        className="h-20 w-6 flex items-center justify-center bg-white hover:bg-purple-100 hover:text-purple-600 text-gray-500 transition-colors border border-l-0 border-gray-300 rounded-r-xl shadow-md"
                         title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
                     >
-                        {sidebarOpen ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
+                        {sidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
                     </button>
                 </div>
 

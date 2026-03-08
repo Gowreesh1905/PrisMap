@@ -1,15 +1,16 @@
 "use client";
 
+import React from "react";
+import { ThemeProvider } from "next-themes";
 import { ShortcutProvider } from "@/contexts/ShortcutContext";
+import AppLayout from "@/components/AppLayout";
 
-/**
- * Client-side providers wrapper.
- * Wraps the app with all client-side context providers.
- */
 export default function Providers({ children }) {
     return (
-        <ShortcutProvider>
-            {children}
-        </ShortcutProvider>
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+            <ShortcutProvider>
+                {children}
+            </ShortcutProvider>
+        </ThemeProvider>
     );
 }

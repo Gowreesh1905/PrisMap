@@ -92,7 +92,7 @@ export default function Navbar({ user, projects = [] }) {
 
   return (
     <>
-      <nav className="fixed top-6 left-1/2 z-50 flex w-[90%] max-w-4xl -translate-x-1/2 items-center justify-between rounded-full border border-[var(--color-border-ui)] bg-[var(--color-nav)] px-6 py-2 shadow-2xl glass-effect">
+      <nav className="fixed top-6 left-[calc(50%+32px)] z-50 flex w-[calc(90%-64px)] max-w-4xl -translate-x-1/2 items-center justify-between rounded-full border border-[var(--color-border-ui)] bg-[var(--color-nav)] px-6 py-2 shadow-2xl glass-effect">
         {/* Brand Logo with Dark-Mode Glossy Effect */}
         <button
           onClick={() => router.push("/dashboard")}

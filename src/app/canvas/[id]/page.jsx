@@ -25,6 +25,7 @@ import LiveCursors from '@/components/LiveCursors';
 import CollaborationPanel from '@/components/CollaborationPanel';
 import { useShortcuts } from '@/contexts/ShortcutContext';
 import useCollaboration from '@/hooks/useCollaboration';
+import Sidebar from '@/components/Sidebar';
 
 const CANVAS_WIDTH = typeof window !== 'undefined' ? window.innerWidth - 480 : 1200;
 const CANVAS_HEIGHT = typeof window !== 'undefined' ? window.innerHeight - 56 : 800;
@@ -113,6 +114,7 @@ export default function CanvasPage() {
     const [fontSize, setFontSize] = useState(24);
     const [fontStyle, setFontStyle] = useState('normal'); // 'normal' | 'italic'
     const [fontWeight, setFontWeight] = useState('normal'); // 'normal' | 'bold'
+    const [workspaceMode, setWorkspaceMode] = useState('drawing'); // 'drawing' | 'flowchart' | 'poster'
 
     // Available fonts
     const fontFamilies = [
@@ -1510,1006 +1512,1047 @@ export default function CanvasPage() {
     }
 
     return (
-        <div className="flex flex-col h-screen w-full overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100">
-            <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleImageUpload}
-                style={{ display: 'none' }}
-                accept="image/*"
-            />
-            {/* Header */}
-            <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6 shadow-sm">
-                <div className="flex items-center gap-3">
-                    {/* Back button */}
-                    <button
-                        onClick={() => router.push('/dashboard')}
-                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                        title="Back to Dashboard"
-                    >
-                        <ArrowLeft size={20} className="text-gray-600" />
-                    </button>
+        <div className="flex h-screen w-full overflow-hidden bg-[var(--color-bg-base)]">
+            {/* Left Workspace Sidebar */}
+            <Sidebar currentMode={workspaceMode} onModeChange={setWorkspaceMode} />
 
-                    <div className="h-6 w-px bg-gray-300" />
+            <div className="flex-1 flex flex-col h-full overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100 relative">
+                <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleImageUpload}
+                    style={{ display: 'none' }}
+                    accept="image/*"
+                />
+                {/* Header */}
+                <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6 shadow-sm">
+                    <div className="flex items-center gap-3">
+                        {/* Back button */}
+                        <button
+                            onClick={() => router.push('/dashboard')}
+                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                            title="Back to Dashboard"
+                        >
+                            <ArrowLeft size={20} className="text-gray-600" />
+                        </button>
 
-                    <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-gradient-to-br from-purple-600 to-indigo-600 rounded-lg flex items-center justify-center">
-                            <span className="text-white font-bold text-sm">P</span>
-                        </div>
+                        <div className="h-6 w-px bg-gray-300" />
 
-                        {/* Editable Title */}
-                        {isEditingTitle ? (
-                            <input
-                                ref={titleInputRef}
-                                type="text"
-                                value={canvasTitle}
-                                onChange={(e) => setCanvasTitle(e.target.value)}
-                                onBlur={handleTitleSubmit}
-                                onKeyDown={handleTitleKeyDown}
-                                className="font-bold text-lg tracking-tight text-gray-900 bg-gray-100 px-2 py-1 rounded border border-purple-300 outline-none focus:border-purple-500"
-                                style={{ minWidth: '150px' }}
-                            />
-                        ) : (
-                            <button
-                                onClick={() => setIsEditingTitle(true)}
-                                className="font-bold text-lg tracking-tight text-gray-900 hover:bg-gray-100 px-2 py-1 rounded transition-colors"
-                                title="Click to edit title"
-                            >
-                                {canvasTitle}
-                            </button>
-                        )}
-                    </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 bg-gradient-to-br from-purple-600 to-indigo-600 rounded-lg flex items-center justify-center">
+                                <span className="text-white font-bold text-sm">P</span>
+                            </div>
 
-                    {/* Save status */}
-                    <div className="flex items-center gap-2 ml-4">
-                        {saving ? (
-                            <span className="text-xs text-gray-400 flex items-center gap-1">
-                                <Save size={12} className="animate-pulse" />
-                                Saving...
-                            </span>
-                        ) : lastSaved ? (
-                            <span className="text-xs text-green-600 flex items-center gap-1">
-                                <Check size={12} />
-                                Saved
-                            </span>
-                        ) : null}
-                    </div>
-                </div>
-
-                {/* Collaborator avatars + Share button */}
-                <div className="flex items-center gap-3">
-                    {/* Stacked avatars of online users */}
-                    {activeUsers.length > 1 && (
-                        <div className="flex -space-x-2">
-                            {activeUsers
-                                .filter(u => u.uid !== user?.uid)
-                                .slice(0, 4)
-                                .map(u => (
-                                    <div
-                                        key={u.uid}
-                                        className="w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-white text-[10px] font-bold shadow-sm"
-                                        style={{ backgroundColor: u.color }}
-                                        title={u.displayName}
-                                    >
-                                        {(u.displayName || '?')[0].toUpperCase()}
-                                    </div>
-                                ))}
-                            {activeUsers.filter(u => u.uid !== user?.uid).length > 4 && (
-                                <div className="w-7 h-7 rounded-full border-2 border-white bg-gray-400 flex items-center justify-center text-white text-[10px] font-bold">
-                                    +{activeUsers.filter(u => u.uid !== user?.uid).length - 4}
-                                </div>
+                            {/* Editable Title */}
+                            {isEditingTitle ? (
+                                <input
+                                    ref={titleInputRef}
+                                    type="text"
+                                    value={canvasTitle}
+                                    onChange={(e) => setCanvasTitle(e.target.value)}
+                                    onBlur={handleTitleSubmit}
+                                    onKeyDown={handleTitleKeyDown}
+                                    className="font-bold text-lg tracking-tight text-gray-900 bg-gray-100 px-2 py-1 rounded border border-purple-300 outline-none focus:border-purple-500"
+                                    style={{ minWidth: '150px' }}
+                                />
+                            ) : (
+                                <button
+                                    onClick={() => setIsEditingTitle(true)}
+                                    className="font-bold text-lg tracking-tight text-gray-900 hover:bg-gray-100 px-2 py-1 rounded transition-colors"
+                                    title="Click to edit title"
+                                >
+                                    {canvasTitle}
+                                </button>
                             )}
                         </div>
-                    )}
 
-                    {/* Share button */}
-                    <button
-                        onClick={() => setShowSharePanel(true)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-semibold rounded-lg hover:from-purple-700 hover:to-indigo-700 shadow-md shadow-purple-500/20 transition-all"
-                        title="Share canvas"
-                    >
-                        Share
-                    </button>
-                </div>
-
-                {/* Undo/Redo and Zoom controls */}
-                <div className="flex items-center gap-2">
-                    {/* Manual Save */}
-                    <button
-                        onClick={() => saveCanvas(elements, canvasTitle)}
-                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors mr-2"
-                        title="Save (Ctrl+S)"
-                    >
-                        <Save size={18} className="text-gray-600" />
-                    </button>
-
-                    {/* Undo/Redo */}
-                    <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1 mr-2">
-                        <button
-                            onClick={undo}
-                            disabled={historyStep === 0}
-                            className={`p-2 rounded transition-colors ${historyStep === 0
-                                ? 'text-gray-300 cursor-not-allowed'
-                                : 'hover:bg-white text-gray-700'
-                                }`}
-                            title="Undo (Ctrl+Z)"
-                        >
-                            <Undo size={16} />
-                        </button>
-                        <button
-                            onClick={redo}
-                            disabled={historyStep >= history.length - 1}
-                            className={`p-2 rounded transition-colors ${historyStep >= history.length - 1
-                                ? 'text-gray-300 cursor-not-allowed'
-                                : 'hover:bg-white text-gray-700'
-                                }`}
-                            title="Redo (Ctrl+Y)"
-                        >
-                            <Redo size={16} />
-                        </button>
-                    </div>
-
-                    {/* Zoom */}
-                    <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-                        <button
-                            onClick={zoomOut}
-                            className="p-2 hover:bg-white rounded transition-colors"
-                            title="Zoom Out"
-                        >
-                            <ZoomOut size={16} className="text-gray-700" />
-                        </button>
-                        <span className="px-3 text-sm font-medium text-gray-700 min-w-[60px] text-center">
-                            {Math.round(stageScale * 100)}%
-                        </span>
-                        <button
-                            onClick={zoomIn}
-                            className="p-2 hover:bg-white rounded transition-colors"
-                            title="Zoom In"
-                        >
-                            <ZoomIn size={16} className="text-gray-700" />
-                        </button>
-                        <button
-                            onClick={resetZoom}
-                            className="p-2 hover:bg-white rounded transition-colors ml-1"
-                            title="Reset Zoom"
-                        >
-                            <Maximize2 size={16} className="text-gray-700" />
-                        </button>
-                    </div>
-                </div>
-            </header>
-
-            <div className="flex flex-1 overflow-hidden">
-                {/* Toolbar */}
-                <div className="w-[200px] bg-white border-r border-gray-200 p-4 overflow-y-auto shadow-sm">
-                    <div className="mb-6">
-                        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
-                            Tools
-                        </h3>
-                        <div className="grid grid-cols-2 gap-2">
-                            {tools.map((t) => {
-                                const Icon = t.icon;
-                                const isActive = tool === t.id;
-                                return (
-                                    <button
-                                        key={t.id}
-                                        onClick={() => {
-                                            if (t.id === 'image') {
-                                                fileInputRef.current?.click();
-                                            } else {
-                                                setTool(t.id);
-                                            }
-                                        }}
-                                        className={`flex flex-col items-center justify-center p-3 rounded-xl transition-all ${isActive
-                                            ? 'bg-gradient-to-br from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/30'
-                                            : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
-                                            }`}
-                                    >
-                                        <Icon size={20} />
-                                        <span className="text-[9px] font-medium mt-1">{t.label}</span>
-                                    </button>
-                                );
-                            })}
+                        {/* Save status */}
+                        <div className="flex items-center gap-2 ml-4">
+                            {saving ? (
+                                <span className="text-xs text-gray-400 flex items-center gap-1">
+                                    <Save size={12} className="animate-pulse" />
+                                    Saving...
+                                </span>
+                            ) : lastSaved ? (
+                                <span className="text-xs text-green-600 flex items-center gap-1">
+                                    <Check size={12} />
+                                    Saved
+                                </span>
+                            ) : null}
                         </div>
                     </div>
 
-                    <div className="mb-6">
-                        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
-                            Shapes
-                        </h3>
-                        <div className="grid grid-cols-2 gap-2">
-                            {shapes.map((s) => {
-                                const Icon = s.icon;
-                                const isActive = tool === s.id;
-                                return (
-                                    <button
-                                        key={s.id}
-                                        onClick={() => setTool(s.id)}
-                                        className={`flex flex-col items-center justify-center p-3 rounded-xl transition-all ${isActive
-                                            ? 'bg-gradient-to-br from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/30'
-                                            : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
-                                            }`}
-                                    >
-                                        <Icon size={20} />
-                                        <span className="text-[9px] font-medium mt-1">{s.label}</span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </div>
+                    {/* Collaborator avatars + Share button */}
+                    <div className="flex items-center gap-3">
+                        {/* Stacked avatars of online users */}
+                        {activeUsers.length > 1 && (
+                            <div className="flex -space-x-2">
+                                {activeUsers
+                                    .filter(u => u.uid !== user?.uid)
+                                    .slice(0, 4)
+                                    .map(u => (
+                                        <div
+                                            key={u.uid}
+                                            className="w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-white text-[10px] font-bold shadow-sm"
+                                            style={{ backgroundColor: u.color }}
+                                            title={u.displayName}
+                                        >
+                                            {(u.displayName || '?')[0].toUpperCase()}
+                                        </div>
+                                    ))}
+                                {activeUsers.filter(u => u.uid !== user?.uid).length > 4 && (
+                                    <div className="w-7 h-7 rounded-full border-2 border-white bg-gray-400 flex items-center justify-center text-white text-[10px] font-bold">
+                                        +{activeUsers.filter(u => u.uid !== user?.uid).length - 4}
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
-                    <div className="pt-4 border-t border-gray-200">
+                        {/* Share button */}
                         <button
-                            onClick={clearCanvas}
-                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 text-red-600 rounded-xl font-medium text-sm hover:bg-red-100 transition-colors border border-red-200"
+                            onClick={() => setShowSharePanel(true)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-semibold rounded-lg hover:from-purple-700 hover:to-indigo-700 shadow-md shadow-purple-500/20 transition-all"
+                            title="Share canvas"
                         >
-                            <Trash2 size={16} />
-                            Clear Canvas
+                            Share
                         </button>
                     </div>
-                </div>
 
-                {/* Canvas */}
-                <div className="flex-1 overflow-hidden bg-gray-100">
-                    <Stage
-                        ref={stageRef}
-                        width={CANVAS_WIDTH}
-                        height={CANVAS_HEIGHT}
-                        onMouseDown={handleMouseDown}
-                        onMouseMove={handleMouseMove}
-                        onMouseUp={handleMouseUp}
-                        onWheel={handleWheel}
-                        onDblClick={(e) => {
-                            // Check if double-click was on a text node
-                            const target = e.target;
-                            const id = target.id ? target.id() : '';
-                            console.log('Stage dblclick, target id:', id);
-                            if (id && id.startsWith('text-')) {
-                                const elementId = parseInt(id.replace('text-', ''));
-                                console.log('Text element double-clicked, id:', elementId);
-                                handleTextDblClick(elementId);
-                            }
-                        }}
-                        onDblTap={(e) => {
-                            // Same for touch devices
-                            const target = e.target;
-                            const id = target.id ? target.id() : '';
-                            if (id && id.startsWith('text-')) {
-                                const elementId = parseInt(id.replace('text-', ''));
-                                handleTextDblClick(elementId);
-                            }
-                        }}
-                        scaleX={stageScale}
-                        scaleY={stageScale}
-                        x={stagePos.x}
-                        y={stagePos.y}
-                        draggable={tool === 'select' && !selectedId}
-                    >
-                        <Layer>
-                            {/* Background pattern - grid or dots */}
-                            {(() => {
-                                const gridSize = 50;
+                    {/* Undo/Redo and Zoom controls */}
+                    <div className="flex items-center gap-2">
+                        {/* Manual Save */}
+                        <button
+                            onClick={() => saveCanvas(elements, canvasTitle)}
+                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors mr-2"
+                            title="Save (Ctrl+S)"
+                        >
+                            <Save size={18} className="text-gray-600" />
+                        </button>
 
-                                // Calculate visible area in canvas coordinates
-                                const startX = Math.floor((-stagePos.x / stageScale) / gridSize) * gridSize;
-                                const startY = Math.floor((-stagePos.y / stageScale) / gridSize) * gridSize;
-                                const endX = startX + Math.ceil(CANVAS_WIDTH / stageScale) + gridSize;
-                                const endY = startY + Math.ceil(CANVAS_HEIGHT / stageScale) + gridSize;
+                        {/* Undo/Redo */}
+                        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1 mr-2">
+                            <button
+                                onClick={undo}
+                                disabled={historyStep === 0}
+                                className={`p-2 rounded transition-colors ${historyStep === 0
+                                    ? 'text-gray-300 cursor-not-allowed'
+                                    : 'hover:bg-white text-gray-700'
+                                    }`}
+                                title="Undo (Ctrl+Z)"
+                            >
+                                <Undo size={16} />
+                            </button>
+                            <button
+                                onClick={redo}
+                                disabled={historyStep >= history.length - 1}
+                                className={`p-2 rounded transition-colors ${historyStep >= history.length - 1
+                                    ? 'text-gray-300 cursor-not-allowed'
+                                    : 'hover:bg-white text-gray-700'
+                                    }`}
+                                title="Redo (Ctrl+Y)"
+                            >
+                                <Redo size={16} />
+                            </button>
+                        </div>
 
-                                const elements = [];
+                        {/* Zoom */}
+                        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+                            <button
+                                onClick={zoomOut}
+                                className="p-2 hover:bg-white rounded transition-colors"
+                                title="Zoom Out"
+                            >
+                                <ZoomOut size={16} className="text-gray-700" />
+                            </button>
+                            <span className="px-3 text-sm font-medium text-gray-700 min-w-[60px] text-center">
+                                {Math.round(stageScale * 100)}%
+                            </span>
+                            <button
+                                onClick={zoomIn}
+                                className="p-2 hover:bg-white rounded transition-colors"
+                                title="Zoom In"
+                            >
+                                <ZoomIn size={16} className="text-gray-700" />
+                            </button>
+                            <button
+                                onClick={resetZoom}
+                                className="p-2 hover:bg-white rounded transition-colors ml-1"
+                                title="Reset Zoom"
+                            >
+                                <Maximize2 size={16} className="text-gray-700" />
+                            </button>
+                        </div>
+                    </div>
+                </header>
 
-                                if (isExporting) {
-                                    elements.push(
-                                        <Rect
-                                            key="export-bg"
-                                            x={-stagePos.x / stageScale}
-                                            y={-stagePos.y / stageScale}
-                                            width={CANVAS_WIDTH / stageScale}
-                                            height={CANVAS_HEIGHT / stageScale}
-                                            fill="#ffffff"
-                                            listening={false}
-                                        />
-                                    );
-                                } else if (backgroundPattern === 'grid') {
-                                    // Grid lines pattern
-                                    for (let x = startX; x <= endX; x += gridSize) {
-                                        elements.push(
-                                            <Line
-                                                key={`v-${x}`}
-                                                points={[x, startY - gridSize, x, endY + gridSize]}
-                                                stroke="#e5e7eb"
-                                                strokeWidth={1 / stageScale}
-                                                listening={false}
-                                            />
+                {/* Main Workspace Area - Conditional based on mode */}
+                {workspaceMode === 'drawing' ? (
+                    <div className="flex flex-1 overflow-hidden">
+                        {/* Toolbar */}
+                        <div className="w-[200px] bg-white border-r border-gray-200 p-4 overflow-y-auto shadow-sm">
+                            <div className="mb-6">
+                                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
+                                    Tools
+                                </h3>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {tools.map((t) => {
+                                        const Icon = t.icon;
+                                        const isActive = tool === t.id;
+                                        return (
+                                            <button
+                                                key={t.id}
+                                                onClick={() => {
+                                                    if (t.id === 'image') {
+                                                        fileInputRef.current?.click();
+                                                    } else {
+                                                        setTool(t.id);
+                                                    }
+                                                }}
+                                                className={`flex flex-col items-center justify-center p-3 rounded-xl transition-all ${isActive
+                                                    ? 'bg-gradient-to-br from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/30'
+                                                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
+                                                    }`}
+                                            >
+                                                <Icon size={20} />
+                                                <span className="text-[9px] font-medium mt-1">{t.label}</span>
+                                            </button>
                                         );
-                                    }
-                                    for (let y = startY; y <= endY; y += gridSize) {
-                                        elements.push(
-                                            <Line
-                                                key={`h-${y}`}
-                                                points={[startX - gridSize, y, endX + gridSize, y]}
-                                                stroke="#e5e7eb"
-                                                strokeWidth={1 / stageScale}
-                                                listening={false}
-                                            />
+                                    })}
+                                </div>
+                            </div>
+
+                            <div className="mb-6">
+                                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
+                                    Shapes
+                                </h3>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {shapes.map((s) => {
+                                        const Icon = s.icon;
+                                        const isActive = tool === s.id;
+                                        return (
+                                            <button
+                                                key={s.id}
+                                                onClick={() => setTool(s.id)}
+                                                className={`flex flex-col items-center justify-center p-3 rounded-xl transition-all ${isActive
+                                                    ? 'bg-gradient-to-br from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/30'
+                                                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
+                                                    }`}
+                                            >
+                                                <Icon size={20} />
+                                                <span className="text-[9px] font-medium mt-1">{s.label}</span>
+                                            </button>
                                         );
+                                    })}
+                                </div>
+                            </div>
+
+                            <div className="pt-4 border-t border-gray-200">
+                                <button
+                                    onClick={clearCanvas}
+                                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 text-red-600 rounded-xl font-medium text-sm hover:bg-red-100 transition-colors border border-red-200"
+                                >
+                                    <Trash2 size={16} />
+                                    Clear Canvas
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Canvas */}
+                        <div className="flex-1 overflow-hidden bg-gray-100">
+                            <Stage
+                                ref={stageRef}
+                                width={CANVAS_WIDTH}
+                                height={CANVAS_HEIGHT}
+                                onMouseDown={handleMouseDown}
+                                onMouseMove={handleMouseMove}
+                                onMouseUp={handleMouseUp}
+                                onWheel={handleWheel}
+                                onDblClick={(e) => {
+                                    // Check if double-click was on a text node
+                                    const target = e.target;
+                                    const id = target.id ? target.id() : '';
+                                    console.log('Stage dblclick, target id:', id);
+                                    if (id && id.startsWith('text-')) {
+                                        const elementId = parseInt(id.replace('text-', ''));
+                                        console.log('Text element double-clicked, id:', elementId);
+                                        handleTextDblClick(elementId);
                                     }
-                                } else {
-                                    // Dots pattern
-                                    for (let x = startX; x <= endX; x += gridSize) {
-                                        for (let y = startY; y <= endY; y += gridSize) {
+                                }}
+                                onDblTap={(e) => {
+                                    // Same for touch devices
+                                    const target = e.target;
+                                    const id = target.id ? target.id() : '';
+                                    if (id && id.startsWith('text-')) {
+                                        const elementId = parseInt(id.replace('text-', ''));
+                                        handleTextDblClick(elementId);
+                                    }
+                                }}
+                                scaleX={stageScale}
+                                scaleY={stageScale}
+                                x={stagePos.x}
+                                y={stagePos.y}
+                                draggable={tool === 'select' && !selectedId}
+                            >
+                                <Layer>
+                                    {/* Background pattern - grid or dots */}
+                                    {(() => {
+                                        const gridSize = 50;
+
+                                        // Calculate visible area in canvas coordinates
+                                        const startX = Math.floor((-stagePos.x / stageScale) / gridSize) * gridSize;
+                                        const startY = Math.floor((-stagePos.y / stageScale) / gridSize) * gridSize;
+                                        const endX = startX + Math.ceil(CANVAS_WIDTH / stageScale) + gridSize;
+                                        const endY = startY + Math.ceil(CANVAS_HEIGHT / stageScale) + gridSize;
+
+                                        const elements = [];
+
+                                        if (isExporting) {
                                             elements.push(
-                                                <Circle
-                                                    key={`dot-${x}-${y}`}
-                                                    x={x}
-                                                    y={y}
-                                                    radius={2 / stageScale}
-                                                    fill="#d1d5db"
+                                                <Rect
+                                                    key="export-bg"
+                                                    x={-stagePos.x / stageScale}
+                                                    y={-stagePos.y / stageScale}
+                                                    width={CANVAS_WIDTH / stageScale}
+                                                    height={CANVAS_HEIGHT / stageScale}
+                                                    fill="#ffffff"
                                                     listening={false}
                                                 />
                                             );
+                                        } else if (backgroundPattern === 'grid') {
+                                            // Grid lines pattern
+                                            for (let x = startX; x <= endX; x += gridSize) {
+                                                elements.push(
+                                                    <Line
+                                                        key={`v-${x}`}
+                                                        points={[x, startY - gridSize, x, endY + gridSize]}
+                                                        stroke="#e5e7eb"
+                                                        strokeWidth={1 / stageScale}
+                                                        listening={false}
+                                                    />
+                                                );
+                                            }
+                                            for (let y = startY; y <= endY; y += gridSize) {
+                                                elements.push(
+                                                    <Line
+                                                        key={`h-${y}`}
+                                                        points={[startX - gridSize, y, endX + gridSize, y]}
+                                                        stroke="#e5e7eb"
+                                                        strokeWidth={1 / stageScale}
+                                                        listening={false}
+                                                    />
+                                                );
+                                            }
+                                        } else {
+                                            // Dots pattern
+                                            for (let x = startX; x <= endX; x += gridSize) {
+                                                for (let y = startY; y <= endY; y += gridSize) {
+                                                    elements.push(
+                                                        <Circle
+                                                            key={`dot-${x}-${y}`}
+                                                            x={x}
+                                                            y={y}
+                                                            radius={2 / stageScale}
+                                                            fill="#d1d5db"
+                                                            listening={false}
+                                                        />
+                                                    );
+                                                }
+                                            }
                                         }
-                                    }
-                                }
 
-                                return elements;
-                            })()}
+                                        return elements;
+                                    })()}
 
-                            {/* Render all elements */}
-                            {elements.map(renderShape)}
+                                    {/* Render all elements */}
+                                    {elements.map(renderShape)}
 
-                            {/* Remote users' cursors */}
-                            <LiveCursors cursors={remoteCursors} />
+                                    {/* Remote users' cursors */}
+                                    <LiveCursors cursors={remoteCursors} />
 
-                            {/* Current drawing preview */}
-                            {isDrawing && currentPoints.length >= 2 && (
-                                tool === 'pen' ? (
-                                    <Line
-                                        points={currentPoints}
-                                        stroke={strokeColor}
-                                        strokeWidth={strokeWidth}
-                                        tension={0.5}
-                                        lineCap="round"
-                                        lineJoin="round"
+                                    {/* Current drawing preview */}
+                                    {isDrawing && currentPoints.length >= 2 && (
+                                        tool === 'pen' ? (
+                                            <Line
+                                                points={currentPoints}
+                                                stroke={strokeColor}
+                                                strokeWidth={strokeWidth}
+                                                tension={0.5}
+                                                lineCap="round"
+                                                lineJoin="round"
+                                            />
+                                        ) : currentPoints.length === 4 && (
+                                            tool === 'rectangle' ? (
+                                                <Rect
+                                                    x={Math.min(currentPoints[0], currentPoints[2])}
+                                                    y={Math.min(currentPoints[1], currentPoints[3])}
+                                                    width={Math.abs(currentPoints[2] - currentPoints[0])}
+                                                    height={Math.abs(currentPoints[3] - currentPoints[1])}
+                                                    fill={fillColor}
+                                                    stroke={strokeColor}
+                                                    strokeWidth={strokeWidth}
+                                                />
+                                            ) : tool === 'circle' ? (
+                                                <Circle
+                                                    x={(currentPoints[0] + currentPoints[2]) / 2}
+                                                    y={(currentPoints[1] + currentPoints[3]) / 2}
+                                                    radius={Math.min(
+                                                        Math.abs(currentPoints[2] - currentPoints[0]),
+                                                        Math.abs(currentPoints[3] - currentPoints[1])
+                                                    ) / 2}
+                                                    fill={fillColor}
+                                                    stroke={strokeColor}
+                                                    strokeWidth={strokeWidth}
+                                                />
+                                            ) : tool === 'triangle' ? (
+                                                <RegularPolygon
+                                                    x={(currentPoints[0] + currentPoints[2]) / 2}
+                                                    y={(currentPoints[1] + currentPoints[3]) / 2}
+                                                    sides={3}
+                                                    radius={Math.min(
+                                                        Math.abs(currentPoints[2] - currentPoints[0]),
+                                                        Math.abs(currentPoints[3] - currentPoints[1])
+                                                    ) / 2}
+                                                    fill={fillColor}
+                                                    stroke={strokeColor}
+                                                    strokeWidth={strokeWidth}
+                                                />
+                                            ) : tool === 'star' ? (
+                                                <Star
+                                                    x={(currentPoints[0] + currentPoints[2]) / 2}
+                                                    y={(currentPoints[1] + currentPoints[3]) / 2}
+                                                    numPoints={5}
+                                                    innerRadius={Math.min(
+                                                        Math.abs(currentPoints[2] - currentPoints[0]),
+                                                        Math.abs(currentPoints[3] - currentPoints[1])
+                                                    ) / 4}
+                                                    outerRadius={Math.min(
+                                                        Math.abs(currentPoints[2] - currentPoints[0]),
+                                                        Math.abs(currentPoints[3] - currentPoints[1])
+                                                    ) / 2}
+                                                    fill={fillColor}
+                                                    stroke={strokeColor}
+                                                    strokeWidth={strokeWidth}
+                                                />
+                                            ) : tool === 'hexagon' ? (
+                                                <RegularPolygon
+                                                    x={(currentPoints[0] + currentPoints[2]) / 2}
+                                                    y={(currentPoints[1] + currentPoints[3]) / 2}
+                                                    sides={6}
+                                                    radius={Math.min(
+                                                        Math.abs(currentPoints[2] - currentPoints[0]),
+                                                        Math.abs(currentPoints[3] - currentPoints[1])
+                                                    ) / 2}
+                                                    fill={fillColor}
+                                                    stroke={strokeColor}
+                                                    strokeWidth={strokeWidth}
+                                                />
+                                            ) : tool === 'pentagon' ? (
+                                                <RegularPolygon
+                                                    x={(currentPoints[0] + currentPoints[2]) / 2}
+                                                    y={(currentPoints[1] + currentPoints[3]) / 2}
+                                                    sides={5}
+                                                    radius={Math.min(
+                                                        Math.abs(currentPoints[2] - currentPoints[0]),
+                                                        Math.abs(currentPoints[3] - currentPoints[1])
+                                                    ) / 2}
+                                                    fill={fillColor}
+                                                    stroke={strokeColor}
+                                                    strokeWidth={strokeWidth}
+                                                />
+                                            ) : tool === 'arrow' ? (
+                                                <Arrow
+                                                    points={[currentPoints[0], currentPoints[1], currentPoints[2], currentPoints[3]]}
+                                                    stroke={strokeColor}
+                                                    strokeWidth={strokeWidth}
+                                                    fill={strokeColor}
+                                                    pointerLength={20}
+                                                    pointerWidth={20}
+                                                />
+                                            ) : tool === 'line' ? (
+                                                <Line
+                                                    points={[currentPoints[0], currentPoints[1], currentPoints[2], currentPoints[3]]}
+                                                    stroke={strokeColor}
+                                                    strokeWidth={strokeWidth}
+                                                    lineCap="round"
+                                                />
+                                            ) : null
+                                        )
+                                    )}
+
+                                    {/* Transformer for resize/rotate handles */}
+                                    <Transformer
+                                        ref={transformerRef}
+                                        boundBoxFunc={(oldBox, newBox) => {
+                                            // Limit minimum size
+                                            if (newBox.width < 10 || newBox.height < 10) {
+                                                return oldBox;
+                                            }
+                                            return newBox;
+                                        }}
+                                        onTransformEnd={(e) => {
+                                            const node = e.target;
+                                            const scaleX = node.scaleX();
+                                            const scaleY = node.scaleY();
+
+                                            // Reset scale and apply to width/height
+                                            node.scaleX(1);
+                                            node.scaleY(1);
+
+                                            setElements(prev => prev.map(el => {
+                                                if (el.id === selectedId) {
+                                                    const updates = {
+                                                        x: node.x(),
+                                                        y: node.y(),
+                                                        rotation: node.rotation(),
+                                                    };
+                                                    if (el.type !== 'pen') {
+                                                        updates.width = Math.max(10, node.width() * scaleX);
+                                                        updates.height = Math.max(10, node.height() * scaleY);
+                                                    }
+                                                    if (el.type === 'text') {
+                                                        updates.fontSize = Math.max(8, (el.fontSize || 24) * scaleY);
+                                                    }
+                                                    return { ...el, ...updates };
+                                                }
+                                                return el;
+                                            }));
+                                            triggerAutoSave(elements);
+                                        }}
+                                        rotateEnabled={true}
+                                        enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right', 'top-center', 'bottom-center']}
+                                        anchorSize={8}
+                                        anchorCornerRadius={2}
+                                        borderStroke="#8b3dff"
+                                        anchorStroke="#8b3dff"
+                                        anchorFill="#ffffff"
                                     />
-                                ) : currentPoints.length === 4 && (
-                                    tool === 'rectangle' ? (
-                                        <Rect
-                                            x={Math.min(currentPoints[0], currentPoints[2])}
-                                            y={Math.min(currentPoints[1], currentPoints[3])}
-                                            width={Math.abs(currentPoints[2] - currentPoints[0])}
-                                            height={Math.abs(currentPoints[3] - currentPoints[1])}
-                                            fill={fillColor}
-                                            stroke={strokeColor}
-                                            strokeWidth={strokeWidth}
-                                        />
-                                    ) : tool === 'circle' ? (
-                                        <Circle
-                                            x={(currentPoints[0] + currentPoints[2]) / 2}
-                                            y={(currentPoints[1] + currentPoints[3]) / 2}
-                                            radius={Math.min(
-                                                Math.abs(currentPoints[2] - currentPoints[0]),
-                                                Math.abs(currentPoints[3] - currentPoints[1])
-                                            ) / 2}
-                                            fill={fillColor}
-                                            stroke={strokeColor}
-                                            strokeWidth={strokeWidth}
-                                        />
-                                    ) : tool === 'triangle' ? (
-                                        <RegularPolygon
-                                            x={(currentPoints[0] + currentPoints[2]) / 2}
-                                            y={(currentPoints[1] + currentPoints[3]) / 2}
-                                            sides={3}
-                                            radius={Math.min(
-                                                Math.abs(currentPoints[2] - currentPoints[0]),
-                                                Math.abs(currentPoints[3] - currentPoints[1])
-                                            ) / 2}
-                                            fill={fillColor}
-                                            stroke={strokeColor}
-                                            strokeWidth={strokeWidth}
-                                        />
-                                    ) : tool === 'star' ? (
-                                        <Star
-                                            x={(currentPoints[0] + currentPoints[2]) / 2}
-                                            y={(currentPoints[1] + currentPoints[3]) / 2}
-                                            numPoints={5}
-                                            innerRadius={Math.min(
-                                                Math.abs(currentPoints[2] - currentPoints[0]),
-                                                Math.abs(currentPoints[3] - currentPoints[1])
-                                            ) / 4}
-                                            outerRadius={Math.min(
-                                                Math.abs(currentPoints[2] - currentPoints[0]),
-                                                Math.abs(currentPoints[3] - currentPoints[1])
-                                            ) / 2}
-                                            fill={fillColor}
-                                            stroke={strokeColor}
-                                            strokeWidth={strokeWidth}
-                                        />
-                                    ) : tool === 'hexagon' ? (
-                                        <RegularPolygon
-                                            x={(currentPoints[0] + currentPoints[2]) / 2}
-                                            y={(currentPoints[1] + currentPoints[3]) / 2}
-                                            sides={6}
-                                            radius={Math.min(
-                                                Math.abs(currentPoints[2] - currentPoints[0]),
-                                                Math.abs(currentPoints[3] - currentPoints[1])
-                                            ) / 2}
-                                            fill={fillColor}
-                                            stroke={strokeColor}
-                                            strokeWidth={strokeWidth}
-                                        />
-                                    ) : tool === 'pentagon' ? (
-                                        <RegularPolygon
-                                            x={(currentPoints[0] + currentPoints[2]) / 2}
-                                            y={(currentPoints[1] + currentPoints[3]) / 2}
-                                            sides={5}
-                                            radius={Math.min(
-                                                Math.abs(currentPoints[2] - currentPoints[0]),
-                                                Math.abs(currentPoints[3] - currentPoints[1])
-                                            ) / 2}
-                                            fill={fillColor}
-                                            stroke={strokeColor}
-                                            strokeWidth={strokeWidth}
-                                        />
-                                    ) : tool === 'arrow' ? (
-                                        <Arrow
-                                            points={[currentPoints[0], currentPoints[1], currentPoints[2], currentPoints[3]]}
-                                            stroke={strokeColor}
-                                            strokeWidth={strokeWidth}
-                                            fill={strokeColor}
-                                            pointerLength={20}
-                                            pointerWidth={20}
-                                        />
-                                    ) : tool === 'line' ? (
-                                        <Line
-                                            points={[currentPoints[0], currentPoints[1], currentPoints[2], currentPoints[3]]}
-                                            stroke={strokeColor}
-                                            strokeWidth={strokeWidth}
-                                            lineCap="round"
-                                        />
-                                    ) : null
-                                )
-                            )}
+                                </Layer>
+                            </Stage>
+                        </div>
 
-                            {/* Transformer for resize/rotate handles */}
-                            <Transformer
-                                ref={transformerRef}
-                                boundBoxFunc={(oldBox, newBox) => {
-                                    // Limit minimum size
-                                    if (newBox.width < 10 || newBox.height < 10) {
-                                        return oldBox;
-                                    }
-                                    return newBox;
-                                }}
-                                onTransformEnd={(e) => {
-                                    const node = e.target;
-                                    const scaleX = node.scaleX();
-                                    const scaleY = node.scaleY();
+                        {/* Enhanced Properties Panel with Tabs */}
+                        <div className="w-[280px] bg-white border-l border-gray-200 overflow-y-auto shadow-sm flex flex-col">
+                            {/* Tab Headers */}
+                            <div className="flex border-b border-gray-200">
+                                {['design', 'layers', 'export'].map(tab => (
+                                    <button
+                                        key={tab}
+                                        onClick={() => setRightPanelTab(tab)}
+                                        className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-colors ${rightPanelTab === tab
+                                            ? 'text-purple-600 border-b-2 border-purple-600 bg-purple-50'
+                                            : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                                            }`}
+                                    >
+                                        {tab}
+                                    </button>
+                                ))}
+                            </div>
 
-                                    // Reset scale and apply to width/height
-                                    node.scaleX(1);
-                                    node.scaleY(1);
-
-                                    setElements(prev => prev.map(el => {
-                                        if (el.id === selectedId) {
-                                            const updates = {
-                                                x: node.x(),
-                                                y: node.y(),
-                                                rotation: node.rotation(),
-                                            };
-                                            if (el.type !== 'pen') {
-                                                updates.width = Math.max(10, node.width() * scaleX);
-                                                updates.height = Math.max(10, node.height() * scaleY);
-                                            }
-                                            if (el.type === 'text') {
-                                                updates.fontSize = Math.max(8, (el.fontSize || 24) * scaleY);
-                                            }
-                                            return { ...el, ...updates };
-                                        }
-                                        return el;
-                                    }));
-                                    triggerAutoSave(elements);
-                                }}
-                                rotateEnabled={true}
-                                enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right', 'top-center', 'bottom-center']}
-                                anchorSize={8}
-                                anchorCornerRadius={2}
-                                borderStroke="#8b3dff"
-                                anchorStroke="#8b3dff"
-                                anchorFill="#ffffff"
-                            />
-                        </Layer>
-                    </Stage>
-                </div>
-
-                {/* Enhanced Properties Panel with Tabs */}
-                <div className="w-[280px] bg-white border-l border-gray-200 overflow-y-auto shadow-sm flex flex-col">
-                    {/* Tab Headers */}
-                    <div className="flex border-b border-gray-200">
-                        {['design', 'layers', 'export'].map(tab => (
-                            <button
-                                key={tab}
-                                onClick={() => setRightPanelTab(tab)}
-                                className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-colors ${rightPanelTab === tab
-                                    ? 'text-purple-600 border-b-2 border-purple-600 bg-purple-50'
-                                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                                    }`}
-                            >
-                                {tab}
-                            </button>
-                        ))}
-                    </div>
-
-                    <div className="flex-1 p-4 overflow-y-auto">
-                        {/* DESIGN TAB */}
-                        {rightPanelTab === 'design' && (
-                            <div className="space-y-6">
-                                {/* Background Pattern Toggle */}
-                                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-                                    <div className="flex items-center gap-2">
-                                        <Grid3X3 size={16} className="text-gray-600" />
-                                        <span className="text-xs font-semibold text-gray-700">Background</span>
-                                    </div>
-                                    <div className="flex gap-1">
-                                        <button
-                                            onClick={() => setBackgroundPattern('grid')}
-                                            className={`px-2 py-1 text-xs font-medium rounded-lg transition-colors ${backgroundPattern === 'grid' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
-                                        >
-                                            Grid
-                                        </button>
-                                        <button
-                                            onClick={() => setBackgroundPattern('dots')}
-                                            className={`px-2 py-1 text-xs font-medium rounded-lg transition-colors ${backgroundPattern === 'dots' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
-                                        >
-                                            Dots
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Colors */}
-                                <div>
-                                    <label className="text-xs font-semibold text-gray-700 mb-2 block uppercase tracking-wider">Stroke Color</label>
-                                    <div className="flex items-center gap-2">
-                                        <input
-                                            type="color"
-                                            value={selectedElement?.stroke || strokeColor}
-                                            onChange={(e) => {
-                                                setStrokeColor(e.target.value);
-                                                if (selectedId) {
-                                                    setElements(prev => prev.map(el =>
-                                                        el.id === selectedId ? { ...el, stroke: e.target.value } : el
-                                                    ));
-                                                }
-                                            }}
-                                            className="w-10 h-10 rounded-lg cursor-pointer border-2 border-gray-200"
-                                        />
-                                        <input
-                                            type="text"
-                                            value={selectedElement?.stroke || strokeColor}
-                                            onChange={(e) => {
-                                                setStrokeColor(e.target.value);
-                                                if (selectedId) {
-                                                    setElements(prev => prev.map(el =>
-                                                        el.id === selectedId ? { ...el, stroke: e.target.value } : el
-                                                    ));
-                                                }
-                                            }}
-                                            className="flex-1 px-2 py-1.5 border border-gray-200 rounded-lg text-xs font-mono uppercase"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label className="text-xs font-semibold text-gray-700 mb-2 block uppercase tracking-wider">Fill Color</label>
-                                    <div className="flex items-center gap-2">
-                                        <input
-                                            type="color"
-                                            value={selectedElement?.fill || fillColor}
-                                            onChange={(e) => {
-                                                setFillColor(e.target.value);
-                                                if (selectedId) {
-                                                    setElements(prev => prev.map(el =>
-                                                        el.id === selectedId ? { ...el, fill: e.target.value } : el
-                                                    ));
-                                                }
-                                            }}
-                                            className="w-10 h-10 rounded-lg cursor-pointer border-2 border-gray-200"
-                                        />
-                                        <input
-                                            type="text"
-                                            value={selectedElement?.fill || fillColor}
-                                            onChange={(e) => {
-                                                setFillColor(e.target.value);
-                                                if (selectedId) {
-                                                    setElements(prev => prev.map(el =>
-                                                        el.id === selectedId ? { ...el, fill: e.target.value } : el
-                                                    ));
-                                                }
-                                            }}
-                                            className="flex-1 px-2 py-1.5 border border-gray-200 rounded-lg text-xs font-mono uppercase"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label className="text-xs font-semibold text-gray-700 mb-2 block uppercase tracking-wider">Stroke Width</label>
-                                    <div className="flex items-center gap-2">
-                                        <input
-                                            type="range"
-                                            min="1"
-                                            max="20"
-                                            value={selectedElement?.strokeWidth || strokeWidth}
-                                            onChange={(e) => {
-                                                const newWidth = parseInt(e.target.value);
-                                                setStrokeWidth(newWidth);
-                                                if (selectedId) {
-                                                    setElements(prev => prev.map(el =>
-                                                        el.id === selectedId ? { ...el, strokeWidth: newWidth } : el
-                                                    ));
-                                                }
-                                            }}
-                                            className="flex-1"
-                                        />
-                                        <span className="text-xs font-mono w-8 text-center">{selectedElement?.strokeWidth || strokeWidth}px</span>
-                                    </div>
-                                </div>
-
-                                {/* Selected Element Controls */}
-                                {selectedElement && (
-                                    <>
-                                        <div className="pt-4 border-t border-gray-200">
-                                            <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">Selected: {selectedElement.type}</h4>
-
-                                            {/* Opacity Control */}
-                                            <div className="mb-4">
-                                                <label className="text-xs font-semibold text-gray-600 mb-1 block">Opacity</label>
-                                                <div className="flex items-center gap-2">
-                                                    <input
-                                                        type="range" min="0" max="1" step="0.1"
-                                                        value={selectedElement.opacity ?? 1}
-                                                        onChange={(e) => updateElementOpacity(selectedElement.id, parseFloat(e.target.value))}
-                                                        className="flex-1"
-                                                    />
-                                                    <span className="text-xs w-10">{Math.round((selectedElement.opacity ?? 1) * 100)}%</span>
-                                                </div>
+                            <div className="flex-1 p-4 overflow-y-auto">
+                                {/* DESIGN TAB */}
+                                {rightPanelTab === 'design' && (
+                                    <div className="space-y-6">
+                                        {/* Background Pattern Toggle */}
+                                        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                                            <div className="flex items-center gap-2">
+                                                <Grid3X3 size={16} className="text-gray-600" />
+                                                <span className="text-xs font-semibold text-gray-700">Background</span>
                                             </div>
+                                            <div className="flex gap-1">
+                                                <button
+                                                    onClick={() => setBackgroundPattern('grid')}
+                                                    className={`px-2 py-1 text-xs font-medium rounded-lg transition-colors ${backgroundPattern === 'grid' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
+                                                >
+                                                    Grid
+                                                </button>
+                                                <button
+                                                    onClick={() => setBackgroundPattern('dots')}
+                                                    className={`px-2 py-1 text-xs font-medium rounded-lg transition-colors ${backgroundPattern === 'dots' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
+                                                >
+                                                    Dots
+                                                </button>
+                                            </div>
+                                        </div>
 
-                                            {/* Rotation Control */}
-                                            <div className="mb-4">
-                                                <label className="text-xs font-semibold text-gray-600 mb-1 block flex items-center gap-1">
-                                                    <RotateCw size={12} />
-                                                    Rotation
-                                                </label>
-                                                <div className="flex items-center gap-2">
-                                                    <input
-                                                        type="range" min="0" max="360" step="1"
-                                                        value={selectedElement.rotation || 0}
-                                                        onChange={(e) => {
-                                                            const newRotation = parseInt(e.target.value);
+                                        {/* Colors */}
+                                        <div>
+                                            <label className="text-xs font-semibold text-gray-700 mb-2 block uppercase tracking-wider">Stroke Color</label>
+                                            <div className="flex items-center gap-2">
+                                                <input
+                                                    type="color"
+                                                    value={selectedElement?.stroke || strokeColor}
+                                                    onChange={(e) => {
+                                                        setStrokeColor(e.target.value);
+                                                        if (selectedId) {
                                                             setElements(prev => prev.map(el =>
-                                                                el.id === selectedId
-                                                                    ? { ...el, rotation: newRotation }
-                                                                    : el
+                                                                el.id === selectedId ? { ...el, stroke: e.target.value } : el
                                                             ));
-                                                        }}
-                                                        className="flex-1"
-                                                    />
-                                                    <input
-                                                        type="number"
-                                                        value={selectedElement.rotation || 0}
-                                                        onChange={(e) => {
-                                                            const newRotation = parseInt(e.target.value) || 0;
+                                                        }
+                                                    }}
+                                                    className="w-10 h-10 rounded-lg cursor-pointer border-2 border-gray-200"
+                                                />
+                                                <input
+                                                    type="text"
+                                                    value={selectedElement?.stroke || strokeColor}
+                                                    onChange={(e) => {
+                                                        setStrokeColor(e.target.value);
+                                                        if (selectedId) {
                                                             setElements(prev => prev.map(el =>
-                                                                el.id === selectedId
-                                                                    ? { ...el, rotation: ((newRotation % 360) + 360) % 360 }
-                                                                    : el
+                                                                el.id === selectedId ? { ...el, stroke: e.target.value } : el
                                                             ));
-                                                        }}
-                                                        className="w-12 px-1 py-1 text-xs border rounded text-center"
-                                                    />
-                                                    <span className="text-xs text-gray-400">°</span>
-                                                </div>
+                                                        }
+                                                    }}
+                                                    className="flex-1 px-2 py-1.5 border border-gray-200 rounded-lg text-xs font-mono uppercase"
+                                                />
                                             </div>
+                                        </div>
 
-                                            {/* Shadow Controls */}
-                                            <div className="mb-4 p-3 bg-gray-50 rounded-xl border border-gray-200">
-                                                <label className="text-xs font-bold text-gray-700 mb-2 block uppercase tracking-wider">Shadow</label>
-
-                                                <div className="space-y-3">
-                                                    {/* Shadow Color */}
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-xs text-gray-600 w-12">Color</span>
-                                                        <input
-                                                            type="color"
-                                                            value={selectedElement.shadowColor || '#000000'}
-                                                            onChange={(e) => updateElementShadow({ shadowColor: e.target.value })}
-                                                            className="w-8 h-8 rounded border cursor-pointer"
-                                                        />
-                                                        <button
-                                                            onClick={() => updateElementShadow({ shadowColor: 'transparent', shadowBlur: 0 })}
-                                                            className="text-xs text-gray-500 hover:text-gray-700"
-                                                        >
-                                                            Clear
-                                                        </button>
-                                                    </div>
-
-                                                    {/* Shadow Blur */}
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-xs text-gray-600 w-12">Blur</span>
-                                                        <input
-                                                            type="range" min="0" max="30" step="1"
-                                                            value={selectedElement.shadowBlur || 0}
-                                                            onChange={(e) => updateElementShadow({ shadowBlur: parseInt(e.target.value) })}
-                                                            className="flex-1"
-                                                        />
-                                                        <span className="text-xs w-8">{selectedElement.shadowBlur || 0}</span>
-                                                    </div>
-
-                                                    {/* Shadow Offset X/Y */}
-                                                    <div className="grid grid-cols-2 gap-2">
-                                                        <div className="flex items-center gap-1">
-                                                            <span className="text-xs text-gray-600">X</span>
-                                                            <input
-                                                                type="number"
-                                                                value={selectedElement.shadowOffsetX || 0}
-                                                                onChange={(e) => updateElementShadow({ shadowOffsetX: parseInt(e.target.value) })}
-                                                                className="w-full px-2 py-1 text-xs border rounded"
-                                                            />
-                                                        </div>
-                                                        <div className="flex items-center gap-1">
-                                                            <span className="text-xs text-gray-600">Y</span>
-                                                            <input
-                                                                type="number"
-                                                                value={selectedElement.shadowOffsetY || 0}
-                                                                onChange={(e) => updateElementShadow({ shadowOffsetY: parseInt(e.target.value) })}
-                                                                className="w-full px-2 py-1 text-xs border rounded"
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                </div>
+                                        <div>
+                                            <label className="text-xs font-semibold text-gray-700 mb-2 block uppercase tracking-wider">Fill Color</label>
+                                            <div className="flex items-center gap-2">
+                                                <input
+                                                    type="color"
+                                                    value={selectedElement?.fill || fillColor}
+                                                    onChange={(e) => {
+                                                        setFillColor(e.target.value);
+                                                        if (selectedId) {
+                                                            setElements(prev => prev.map(el =>
+                                                                el.id === selectedId ? { ...el, fill: e.target.value } : el
+                                                            ));
+                                                        }
+                                                    }}
+                                                    className="w-10 h-10 rounded-lg cursor-pointer border-2 border-gray-200"
+                                                />
+                                                <input
+                                                    type="text"
+                                                    value={selectedElement?.fill || fillColor}
+                                                    onChange={(e) => {
+                                                        setFillColor(e.target.value);
+                                                        if (selectedId) {
+                                                            setElements(prev => prev.map(el =>
+                                                                el.id === selectedId ? { ...el, fill: e.target.value } : el
+                                                            ));
+                                                        }
+                                                    }}
+                                                    className="flex-1 px-2 py-1.5 border border-gray-200 rounded-lg text-xs font-mono uppercase"
+                                                />
                                             </div>
+                                        </div>
 
-                                            {/* Corner Radius - Only for rectangles */}
-                                            {selectedElement.type === 'rectangle' && (
-                                                <div className="mb-4">
-                                                    <label className="text-xs font-semibold text-gray-600 mb-1 block">Corner Radius</label>
-                                                    <div className="flex items-center gap-2">
-                                                        <input
-                                                            type="range" min="0" max="50" step="1"
-                                                            value={selectedElement.cornerRadius || 0}
-                                                            onChange={(e) => updateElementShadow({ cornerRadius: parseInt(e.target.value) })}
-                                                            className="flex-1"
-                                                        />
-                                                        <span className="text-xs w-10">{selectedElement.cornerRadius || 0}px</span>
-                                                    </div>
-                                                </div>
-                                            )}
+                                        <div>
+                                            <label className="text-xs font-semibold text-gray-700 mb-2 block uppercase tracking-wider">Stroke Width</label>
+                                            <div className="flex items-center gap-2">
+                                                <input
+                                                    type="range"
+                                                    min="1"
+                                                    max="20"
+                                                    value={selectedElement?.strokeWidth || strokeWidth}
+                                                    onChange={(e) => {
+                                                        const newWidth = parseInt(e.target.value);
+                                                        setStrokeWidth(newWidth);
+                                                        if (selectedId) {
+                                                            setElements(prev => prev.map(el =>
+                                                                el.id === selectedId ? { ...el, strokeWidth: newWidth } : el
+                                                            ));
+                                                        }
+                                                    }}
+                                                    className="flex-1"
+                                                />
+                                                <span className="text-xs font-mono w-8 text-center">{selectedElement?.strokeWidth || strokeWidth}px</span>
+                                            </div>
+                                        </div>
 
-                                            {/* Font Controls - Only for text elements */}
-                                            {selectedElement.type === 'text' && (
-                                                <div className="mb-4 p-3 bg-purple-50 rounded-xl border border-purple-200">
-                                                    <label className="text-xs font-bold text-purple-700 mb-2 block uppercase tracking-wider">Font Settings</label>
+                                        {/* Selected Element Controls */}
+                                        {selectedElement && (
+                                            <>
+                                                <div className="pt-4 border-t border-gray-200">
+                                                    <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">Selected: {selectedElement.type}</h4>
 
-                                                    {/* Font Family */}
-                                                    <div className="mb-3">
-                                                        <label className="text-xs text-gray-600 mb-1 block">Font Family</label>
-                                                        <select
-                                                            value={selectedElement.fontFamily || 'Arial'}
-                                                            onChange={(e) => updateSelectedFont({ fontFamily: e.target.value })}
-                                                            className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded-lg bg-white"
-                                                        >
-                                                            {fontFamilies.map(font => (
-                                                                <option key={font} value={font} style={{ fontFamily: font }}>{font}</option>
-                                                            ))}
-                                                        </select>
-                                                    </div>
-
-                                                    {/* Font Size */}
-                                                    <div className="mb-3">
-                                                        <label className="text-xs text-gray-600 mb-1 block">Font Size</label>
+                                                    {/* Opacity Control */}
+                                                    <div className="mb-4">
+                                                        <label className="text-xs font-semibold text-gray-600 mb-1 block">Opacity</label>
                                                         <div className="flex items-center gap-2">
                                                             <input
-                                                                type="range" min="8" max="120"
-                                                                value={selectedElement.fontSize || 24}
-                                                                onChange={(e) => updateSelectedFont({ fontSize: parseInt(e.target.value) })}
+                                                                type="range" min="0" max="1" step="0.1"
+                                                                value={selectedElement.opacity ?? 1}
+                                                                onChange={(e) => updateElementOpacity(selectedElement.id, parseFloat(e.target.value))}
+                                                                className="flex-1"
+                                                            />
+                                                            <span className="text-xs w-10">{Math.round((selectedElement.opacity ?? 1) * 100)}%</span>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Rotation Control */}
+                                                    <div className="mb-4">
+                                                        <label className="text-xs font-semibold text-gray-600 mb-1 block flex items-center gap-1">
+                                                            <RotateCw size={12} />
+                                                            Rotation
+                                                        </label>
+                                                        <div className="flex items-center gap-2">
+                                                            <input
+                                                                type="range" min="0" max="360" step="1"
+                                                                value={selectedElement.rotation || 0}
+                                                                onChange={(e) => {
+                                                                    const newRotation = parseInt(e.target.value);
+                                                                    setElements(prev => prev.map(el =>
+                                                                        el.id === selectedId
+                                                                            ? { ...el, rotation: newRotation }
+                                                                            : el
+                                                                    ));
+                                                                }}
                                                                 className="flex-1"
                                                             />
                                                             <input
-                                                                type="number" min="8" max="200"
-                                                                value={selectedElement.fontSize || 24}
-                                                                onChange={(e) => updateSelectedFont({ fontSize: parseInt(e.target.value) })}
-                                                                className="w-14 px-2 py-1 text-xs border border-gray-200 rounded text-center"
+                                                                type="number"
+                                                                value={selectedElement.rotation || 0}
+                                                                onChange={(e) => {
+                                                                    const newRotation = parseInt(e.target.value) || 0;
+                                                                    setElements(prev => prev.map(el =>
+                                                                        el.id === selectedId
+                                                                            ? { ...el, rotation: ((newRotation % 360) + 360) % 360 }
+                                                                            : el
+                                                                    ));
+                                                                }}
+                                                                className="w-12 px-1 py-1 text-xs border rounded text-center"
                                                             />
+                                                            <span className="text-xs text-gray-400">°</span>
                                                         </div>
                                                     </div>
 
-                                                    {/* Bold / Italic Toggles */}
-                                                    <div className="flex gap-2">
-                                                        <button
-                                                            onClick={() => {
-                                                                const currentStyle = selectedElement.fontStyle || 'normal';
-                                                                const isBold = currentStyle.includes('bold');
-                                                                const isItalic = currentStyle.includes('italic');
-                                                                let newStyle = isBold ? (isItalic ? 'italic' : 'normal') : (isItalic ? 'bold italic' : 'bold');
-                                                                updateSelectedFont({ fontStyle: newStyle });
-                                                            }}
-                                                            className={`flex-1 py-2 px-3 text-xs font-bold rounded-lg border transition-colors ${(selectedElement.fontStyle || '').includes('bold')
-                                                                ? 'bg-purple-600 text-white border-purple-600'
-                                                                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
-                                                                }`}
-                                                        >
-                                                            B
-                                                        </button>
-                                                        <button
-                                                            onClick={() => {
-                                                                const currentStyle = selectedElement.fontStyle || 'normal';
-                                                                const isBold = currentStyle.includes('bold');
-                                                                const isItalic = currentStyle.includes('italic');
-                                                                let newStyle = isItalic ? (isBold ? 'bold' : 'normal') : (isBold ? 'bold italic' : 'italic');
-                                                                updateSelectedFont({ fontStyle: newStyle });
-                                                            }}
-                                                            className={`flex-1 py-2 px-3 text-xs italic rounded-lg border transition-colors ${(selectedElement.fontStyle || '').includes('italic')
-                                                                ? 'bg-purple-600 text-white border-purple-600'
-                                                                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
-                                                                }`}
-                                                        >
-                                                            I
-                                                        </button>
+                                                    {/* Shadow Controls */}
+                                                    <div className="mb-4 p-3 bg-gray-50 rounded-xl border border-gray-200">
+                                                        <label className="text-xs font-bold text-gray-700 mb-2 block uppercase tracking-wider">Shadow</label>
+
+                                                        <div className="space-y-3">
+                                                            {/* Shadow Color */}
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-xs text-gray-600 w-12">Color</span>
+                                                                <input
+                                                                    type="color"
+                                                                    value={selectedElement.shadowColor || '#000000'}
+                                                                    onChange={(e) => updateElementShadow({ shadowColor: e.target.value })}
+                                                                    className="w-8 h-8 rounded border cursor-pointer"
+                                                                />
+                                                                <button
+                                                                    onClick={() => updateElementShadow({ shadowColor: 'transparent', shadowBlur: 0 })}
+                                                                    className="text-xs text-gray-500 hover:text-gray-700"
+                                                                >
+                                                                    Clear
+                                                                </button>
+                                                            </div>
+
+                                                            {/* Shadow Blur */}
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-xs text-gray-600 w-12">Blur</span>
+                                                                <input
+                                                                    type="range" min="0" max="30" step="1"
+                                                                    value={selectedElement.shadowBlur || 0}
+                                                                    onChange={(e) => updateElementShadow({ shadowBlur: parseInt(e.target.value) })}
+                                                                    className="flex-1"
+                                                                />
+                                                                <span className="text-xs w-8">{selectedElement.shadowBlur || 0}</span>
+                                                            </div>
+
+                                                            {/* Shadow Offset X/Y */}
+                                                            <div className="grid grid-cols-2 gap-2">
+                                                                <div className="flex items-center gap-1">
+                                                                    <span className="text-xs text-gray-600">X</span>
+                                                                    <input
+                                                                        type="number"
+                                                                        value={selectedElement.shadowOffsetX || 0}
+                                                                        onChange={(e) => updateElementShadow({ shadowOffsetX: parseInt(e.target.value) })}
+                                                                        className="w-full px-2 py-1 text-xs border rounded"
+                                                                    />
+                                                                </div>
+                                                                <div className="flex items-center gap-1">
+                                                                    <span className="text-xs text-gray-600">Y</span>
+                                                                    <input
+                                                                        type="number"
+                                                                        value={selectedElement.shadowOffsetY || 0}
+                                                                        onChange={(e) => updateElementShadow({ shadowOffsetY: parseInt(e.target.value) })}
+                                                                        className="w-full px-2 py-1 text-xs border rounded"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        </div>
                                                     </div>
 
-                                                    {/* Text Alignment */}
+                                                    {/* Corner Radius - Only for rectangles */}
+                                                    {selectedElement.type === 'rectangle' && (
+                                                        <div className="mb-4">
+                                                            <label className="text-xs font-semibold text-gray-600 mb-1 block">Corner Radius</label>
+                                                            <div className="flex items-center gap-2">
+                                                                <input
+                                                                    type="range" min="0" max="50" step="1"
+                                                                    value={selectedElement.cornerRadius || 0}
+                                                                    onChange={(e) => updateElementShadow({ cornerRadius: parseInt(e.target.value) })}
+                                                                    className="flex-1"
+                                                                />
+                                                                <span className="text-xs w-10">{selectedElement.cornerRadius || 0}px</span>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Font Controls - Only for text elements */}
+                                                    {selectedElement.type === 'text' && (
+                                                        <div className="mb-4 p-3 bg-purple-50 rounded-xl border border-purple-200">
+                                                            <label className="text-xs font-bold text-purple-700 mb-2 block uppercase tracking-wider">Font Settings</label>
+
+                                                            {/* Font Family */}
+                                                            <div className="mb-3">
+                                                                <label className="text-xs text-gray-600 mb-1 block">Font Family</label>
+                                                                <select
+                                                                    value={selectedElement.fontFamily || 'Arial'}
+                                                                    onChange={(e) => updateSelectedFont({ fontFamily: e.target.value })}
+                                                                    className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded-lg bg-white"
+                                                                >
+                                                                    {fontFamilies.map(font => (
+                                                                        <option key={font} value={font} style={{ fontFamily: font }}>{font}</option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
+
+                                                            {/* Font Size */}
+                                                            <div className="mb-3">
+                                                                <label className="text-xs text-gray-600 mb-1 block">Font Size</label>
+                                                                <div className="flex items-center gap-2">
+                                                                    <input
+                                                                        type="range" min="8" max="120"
+                                                                        value={selectedElement.fontSize || 24}
+                                                                        onChange={(e) => updateSelectedFont({ fontSize: parseInt(e.target.value) })}
+                                                                        className="flex-1"
+                                                                    />
+                                                                    <input
+                                                                        type="number" min="8" max="200"
+                                                                        value={selectedElement.fontSize || 24}
+                                                                        onChange={(e) => updateSelectedFont({ fontSize: parseInt(e.target.value) })}
+                                                                        className="w-14 px-2 py-1 text-xs border border-gray-200 rounded text-center"
+                                                                    />
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Bold / Italic Toggles */}
+                                                            <div className="flex gap-2">
+                                                                <button
+                                                                    onClick={() => {
+                                                                        const currentStyle = selectedElement.fontStyle || 'normal';
+                                                                        const isBold = currentStyle.includes('bold');
+                                                                        const isItalic = currentStyle.includes('italic');
+                                                                        let newStyle = isBold ? (isItalic ? 'italic' : 'normal') : (isItalic ? 'bold italic' : 'bold');
+                                                                        updateSelectedFont({ fontStyle: newStyle });
+                                                                    }}
+                                                                    className={`flex-1 py-2 px-3 text-xs font-bold rounded-lg border transition-colors ${(selectedElement.fontStyle || '').includes('bold')
+                                                                        ? 'bg-purple-600 text-white border-purple-600'
+                                                                        : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
+                                                                        }`}
+                                                                >
+                                                                    B
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        const currentStyle = selectedElement.fontStyle || 'normal';
+                                                                        const isBold = currentStyle.includes('bold');
+                                                                        const isItalic = currentStyle.includes('italic');
+                                                                        let newStyle = isItalic ? (isBold ? 'bold' : 'normal') : (isBold ? 'bold italic' : 'italic');
+                                                                        updateSelectedFont({ fontStyle: newStyle });
+                                                                    }}
+                                                                    className={`flex-1 py-2 px-3 text-xs italic rounded-lg border transition-colors ${(selectedElement.fontStyle || '').includes('italic')
+                                                                        ? 'bg-purple-600 text-white border-purple-600'
+                                                                        : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
+                                                                        }`}
+                                                                >
+                                                                    I
+                                                                </button>
+                                                            </div>
+
+                                                            {/* Text Alignment */}
+                                                            <div className="mb-4">
+                                                                <label className="text-xs font-semibold text-gray-600 mb-2 block">Text Align</label>
+                                                                <div className="grid grid-cols-3 gap-1">
+                                                                    <button
+                                                                        onClick={() => updateSelectedFont({ textAlign: 'left' })}
+                                                                        className={`py-2 px-3 text-xs rounded-lg border transition-colors ${(selectedElement.textAlign || 'left') === 'left' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'}`}
+                                                                    >
+                                                                        <AlignLeft size={14} className="mx-auto" />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => updateSelectedFont({ textAlign: 'center' })}
+                                                                        className={`py-2 px-3 text-xs rounded-lg border transition-colors ${selectedElement.textAlign === 'center' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'}`}
+                                                                    >
+                                                                        <AlignCenter size={14} className="mx-auto" />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => updateSelectedFont({ textAlign: 'right' })}
+                                                                        className={`py-2 px-3 text-xs rounded-lg border transition-colors ${selectedElement.textAlign === 'right' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'}`}
+                                                                    >
+                                                                        <AlignRight size={14} className="mx-auto" />
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Z-Index Controls */}
                                                     <div className="mb-4">
-                                                        <label className="text-xs font-semibold text-gray-600 mb-2 block">Text Align</label>
-                                                        <div className="grid grid-cols-3 gap-1">
-                                                            <button
-                                                                onClick={() => updateSelectedFont({ textAlign: 'left' })}
-                                                                className={`py-2 px-3 text-xs rounded-lg border transition-colors ${(selectedElement.textAlign || 'left') === 'left' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'}`}
-                                                            >
-                                                                <AlignLeft size={14} className="mx-auto" />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => updateSelectedFont({ textAlign: 'center' })}
-                                                                className={`py-2 px-3 text-xs rounded-lg border transition-colors ${selectedElement.textAlign === 'center' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'}`}
-                                                            >
-                                                                <AlignCenter size={14} className="mx-auto" />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => updateSelectedFont({ textAlign: 'right' })}
-                                                                className={`py-2 px-3 text-xs rounded-lg border transition-colors ${selectedElement.textAlign === 'right' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'}`}
-                                                            >
-                                                                <AlignRight size={14} className="mx-auto" />
-                                                            </button>
+                                                        <label className="text-xs font-semibold text-gray-600 mb-2 block">Layer Order</label>
+                                                        <div className="grid grid-cols-4 gap-1">
+                                                            <button onClick={sendToBack} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Send to Back"><ChevronsDown size={14} /></button>
+                                                            <button onClick={sendBackward} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Send Backward"><ChevronDown size={14} /></button>
+                                                            <button onClick={bringForward} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Bring Forward"><ChevronUp size={14} /></button>
+                                                            <button onClick={bringToFront} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Bring to Front"><ChevronsUp size={14} /></button>
                                                         </div>
                                                     </div>
+
+                                                    {/* Alignment Controls */}
+                                                    <div className="mb-4">
+                                                        <label className="text-xs font-semibold text-gray-600 mb-2 block">Align</label>
+                                                        <div className="grid grid-cols-3 gap-1">
+                                                            <button onClick={() => alignSelected('left')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Left"><AlignLeft size={14} /></button>
+                                                            <button onClick={() => alignSelected('center')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Center"><AlignCenter size={14} /></button>
+                                                            <button onClick={() => alignSelected('right')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Right"><AlignRight size={14} /></button>
+                                                            <button onClick={() => alignSelected('top')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Top"><AlignStartVertical size={14} /></button>
+                                                            <button onClick={() => alignSelected('middle')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Middle"><AlignCenterVertical size={14} /></button>
+                                                            <button onClick={() => alignSelected('bottom')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Bottom"><AlignEndVertical size={14} /></button>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Quick Actions */}
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <button onClick={copySelected} className="flex items-center justify-center gap-1 p-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-medium text-gray-700">
+                                                            <Copy size={12} /> Copy
+                                                        </button>
+                                                        <button onClick={duplicateSelected} className="flex items-center justify-center gap-1 p-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-medium text-gray-700">
+                                                            <Clipboard size={12} /> Duplicate
+                                                        </button>
+                                                    </div>
+
+                                                    <button onClick={deleteSelected} className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-xl font-medium text-sm hover:bg-red-100 transition-colors border border-red-200">
+                                                        <Trash2 size={14} /> Delete
+                                                    </button>
                                                 </div>
-                                            )}
+                                            </>
+                                        )}
 
-                                            {/* Z-Index Controls */}
-                                            <div className="mb-4">
-                                                <label className="text-xs font-semibold text-gray-600 mb-2 block">Layer Order</label>
-                                                <div className="grid grid-cols-4 gap-1">
-                                                    <button onClick={sendToBack} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Send to Back"><ChevronsDown size={14} /></button>
-                                                    <button onClick={sendBackward} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Send Backward"><ChevronDown size={14} /></button>
-                                                    <button onClick={bringForward} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Bring Forward"><ChevronUp size={14} /></button>
-                                                    <button onClick={bringToFront} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Bring to Front"><ChevronsUp size={14} /></button>
-                                                </div>
+                                        {!selectedElement && (
+                                            <div className="text-center text-gray-400 mt-8">
+                                                <div className="text-3xl mb-2">🎨</div>
+                                                <div className="text-xs">Select an element to edit</div>
                                             </div>
+                                        )}
+                                    </div>
+                                )}
 
-                                            {/* Alignment Controls */}
-                                            <div className="mb-4">
-                                                <label className="text-xs font-semibold text-gray-600 mb-2 block">Align</label>
-                                                <div className="grid grid-cols-3 gap-1">
-                                                    <button onClick={() => alignSelected('left')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Left"><AlignLeft size={14} /></button>
-                                                    <button onClick={() => alignSelected('center')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Center"><AlignCenter size={14} /></button>
-                                                    <button onClick={() => alignSelected('right')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Right"><AlignRight size={14} /></button>
-                                                    <button onClick={() => alignSelected('top')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Top"><AlignStartVertical size={14} /></button>
-                                                    <button onClick={() => alignSelected('middle')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Middle"><AlignCenterVertical size={14} /></button>
-                                                    <button onClick={() => alignSelected('bottom')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-600" title="Align Bottom"><AlignEndVertical size={14} /></button>
-                                                </div>
-                                            </div>
-
-                                            {/* Quick Actions */}
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <button onClick={copySelected} className="flex items-center justify-center gap-1 p-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-medium text-gray-700">
-                                                    <Copy size={12} /> Copy
-                                                </button>
-                                                <button onClick={duplicateSelected} className="flex items-center justify-center gap-1 p-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-medium text-gray-700">
-                                                    <Clipboard size={12} /> Duplicate
-                                                </button>
-                                            </div>
-
-                                            <button onClick={deleteSelected} className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-xl font-medium text-sm hover:bg-red-100 transition-colors border border-red-200">
-                                                <Trash2 size={14} /> Delete
-                                            </button>
+                                {/* LAYERS TAB */}
+                                {rightPanelTab === 'layers' && (
+                                    <div>
+                                        <div className="flex items-center justify-between mb-3">
+                                            <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider">Layers ({elements.length})</h4>
                                         </div>
-                                    </>
+                                        <LayersPanel
+                                            elements={elements}
+                                            selectedIds={selectedId ? [selectedId] : []}
+                                            onSelectElement={(id) => { setSelectedId(id); setTool('select'); }}
+                                            onToggleVisibility={toggleVisibility}
+                                            onToggleLock={toggleLock}
+                                            onDelete={(id) => {
+                                                const newElements = elements.filter(el => el.id !== id);
+                                                saveToHistory(newElements);
+                                                if (selectedId === id) setSelectedId(null);
+                                            }}
+                                            onMoveUp={moveLayerUp}
+                                            onMoveDown={moveLayerDown}
+                                            onOpacityChange={updateElementOpacity}
+                                        />
+                                    </div>
                                 )}
 
-                                {!selectedElement && (
-                                    <div className="text-center text-gray-400 mt-8">
-                                        <div className="text-3xl mb-2">🎨</div>
-                                        <div className="text-xs">Select an element to edit</div>
+                                {/* EXPORT TAB */}
+                                {rightPanelTab === 'export' && (
+                                    <div className="space-y-4">
+                                        <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">Export Canvas</h4>
+
+                                        <button onClick={exportAsPNG} className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl font-medium text-sm hover:from-purple-700 hover:to-indigo-700 transition-all shadow-lg shadow-purple-500/30">
+                                            <Download size={16} /> Export as PNG
+                                        </button>
+
+                                        <button onClick={exportAsJPG} className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium text-sm hover:bg-gray-200 transition-colors border border-gray-200">
+                                            <Download size={16} /> Export as JPG
+                                        </button>
+
+                                        <div className="pt-4 border-t border-gray-100 text-xs text-gray-500">
+                                            <p className="mb-2"><strong>Tips:</strong></p>
+                                            <ul className="space-y-1 text-gray-400">
+                                                <li>• PNG: Best for transparent backgrounds</li>
+                                                <li>• JPG: Smaller file size, no transparency</li>
+                                            </ul>
+                                        </div>
+
+                                        <div className="pt-4 border-t border-gray-100">
+                                            <h5 className="text-xs font-bold text-gray-700 mb-2">Keyboard Shortcuts</h5>
+                                            <div className="text-xs text-gray-500 space-y-1">
+                                                <div className="flex justify-between"><span>Copy</span><kbd className="bg-gray-100 px-1 rounded">⌘C</kbd></div>
+                                                <div className="flex justify-between"><span>Paste</span><kbd className="bg-gray-100 px-1 rounded">⌘V</kbd></div>
+                                                <div className="flex justify-between"><span>Duplicate</span><kbd className="bg-gray-100 px-1 rounded">⌘D</kbd></div>
+                                                <div className="flex justify-between"><span>Undo</span><kbd className="bg-gray-100 px-1 rounded">⌘Z</kbd></div>
+                                                <div className="flex justify-between"><span>Redo</span><kbd className="bg-gray-100 px-1 rounded">⌘⇧Z</kbd></div>
+                                                <div className="flex justify-between"><span>Bring Forward</span><kbd className="bg-gray-100 px-1 rounded">]</kbd></div>
+                                                <div className="flex justify-between"><span>Send Backward</span><kbd className="bg-gray-100 px-1 rounded">[</kbd></div>
+                                                <div className="flex justify-between"><span>Snap to Grid</span><kbd className="bg-gray-100 px-1 rounded">G</kbd></div>
+                                                <div className="flex justify-between"><span>Delete</span><kbd className="bg-gray-100 px-1 rounded">Del</kbd></div>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                             </div>
-                        )}
-
-                        {/* LAYERS TAB */}
-                        {rightPanelTab === 'layers' && (
-                            <div>
-                                <div className="flex items-center justify-between mb-3">
-                                    <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider">Layers ({elements.length})</h4>
-                                </div>
-                                <LayersPanel
-                                    elements={elements}
-                                    selectedIds={selectedId ? [selectedId] : []}
-                                    onSelectElement={(id) => { setSelectedId(id); setTool('select'); }}
-                                    onToggleVisibility={toggleVisibility}
-                                    onToggleLock={toggleLock}
-                                    onDelete={(id) => {
-                                        const newElements = elements.filter(el => el.id !== id);
-                                        saveToHistory(newElements);
-                                        if (selectedId === id) setSelectedId(null);
-                                    }}
-                                    onMoveUp={moveLayerUp}
-                                    onMoveDown={moveLayerDown}
-                                    onOpacityChange={updateElementOpacity}
-                                />
-                            </div>
-                        )}
-
-                        {/* EXPORT TAB */}
-                        {rightPanelTab === 'export' && (
-                            <div className="space-y-4">
-                                <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">Export Canvas</h4>
-
-                                <button onClick={exportAsPNG} className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl font-medium text-sm hover:from-purple-700 hover:to-indigo-700 transition-all shadow-lg shadow-purple-500/30">
-                                    <Download size={16} /> Export as PNG
-                                </button>
-
-                                <button onClick={exportAsJPG} className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium text-sm hover:bg-gray-200 transition-colors border border-gray-200">
-                                    <Download size={16} /> Export as JPG
-                                </button>
-
-                                <div className="pt-4 border-t border-gray-100 text-xs text-gray-500">
-                                    <p className="mb-2"><strong>Tips:</strong></p>
-                                    <ul className="space-y-1 text-gray-400">
-                                        <li>• PNG: Best for transparent backgrounds</li>
-                                        <li>• JPG: Smaller file size, no transparency</li>
-                                    </ul>
-                                </div>
-
-                                <div className="pt-4 border-t border-gray-100">
-                                    <h5 className="text-xs font-bold text-gray-700 mb-2">Keyboard Shortcuts</h5>
-                                    <div className="text-xs text-gray-500 space-y-1">
-                                        <div className="flex justify-between"><span>Copy</span><kbd className="bg-gray-100 px-1 rounded">⌘C</kbd></div>
-                                        <div className="flex justify-between"><span>Paste</span><kbd className="bg-gray-100 px-1 rounded">⌘V</kbd></div>
-                                        <div className="flex justify-between"><span>Duplicate</span><kbd className="bg-gray-100 px-1 rounded">⌘D</kbd></div>
-                                        <div className="flex justify-between"><span>Undo</span><kbd className="bg-gray-100 px-1 rounded">⌘Z</kbd></div>
-                                        <div className="flex justify-between"><span>Redo</span><kbd className="bg-gray-100 px-1 rounded">⌘⇧Z</kbd></div>
-                                        <div className="flex justify-between"><span>Bring Forward</span><kbd className="bg-gray-100 px-1 rounded">]</kbd></div>
-                                        <div className="flex justify-between"><span>Send Backward</span><kbd className="bg-gray-100 px-1 rounded">[</kbd></div>
-                                        <div className="flex justify-between"><span>Snap to Grid</span><kbd className="bg-gray-100 px-1 rounded">G</kbd></div>
-                                        <div className="flex justify-between"><span>Delete</span><kbd className="bg-gray-100 px-1 rounded">Del</kbd></div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
+                        </div>
                     </div>
-                </div>
+                ) : null}
+
+                {/* Collaboration share panel */}
+                <CollaborationPanel
+                    isOpen={showSharePanel}
+                    onClose={() => setShowSharePanel(false)}
+                    isShared={isShared}
+                    onToggleShare={toggleShare}
+                    shareKey={shareKey}
+                    onGenerateKey={generateShareKey}
+                    activeUsers={activeUsers}
+                    ownerUid={canvasOwnerRef.current}
+                    currentUserUid={user?.uid}
+                />
+
+                {/* Mode Placeholders */}
+                {workspaceMode === 'flowchart' && (
+                    <div className="flex-1 flex items-center justify-center bg-white">
+                        <div className="text-center">
+                            <FileJson size={64} className="mx-auto mb-4 text-purple-400 opacity-50" />
+                            <h2 className="text-2xl font-bold text-gray-800">Flowchart Mode</h2>
+                            <p className="text-gray-500">Coming Soon: A powerful flowchart and diagram builder.</p>
+                            <button
+                                onClick={() => setWorkspaceMode('drawing')}
+                                className="mt-6 px-6 py-2 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 transition-colors"
+                            >
+                                Back to Drawing
+                            </button>
+                        </div>
+                    </div>
+                )}
+                {workspaceMode === 'poster' && (
+                    <div className="flex-1 flex items-center justify-center bg-white">
+                        <div className="text-center">
+                            <LayoutTemplate size={64} className="mx-auto mb-4 text-purple-400 opacity-50" />
+                            <h2 className="text-2xl font-bold text-gray-800">Poster Mode</h2>
+                            <p className="text-gray-500">Coming Soon: A professional poster and canvas designer.</p>
+                            <button
+                                onClick={() => setWorkspaceMode('drawing')}
+                                className="mt-6 px-6 py-2 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 transition-colors"
+                            >
+                                Back to Drawing
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
-            {/* Collaboration share panel */}
-            <CollaborationPanel
-                isOpen={showSharePanel}
-                onClose={() => setShowSharePanel(false)}
-                isShared={isShared}
-                onToggleShare={toggleShare}
-                shareKey={shareKey}
-                onGenerateKey={generateShareKey}
-                activeUsers={activeUsers}
-                ownerUid={canvasOwnerRef.current}
-                currentUserUid={user?.uid}
-            />
-        </div >
+        </div>
     );
 }
