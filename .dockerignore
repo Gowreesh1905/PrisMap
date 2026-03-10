@@ -1,0 +1,31 @@
+# Dependencies
+node_modules
+npm-debug.log*
+
+# Next.js build output
+.next
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# IDE / OS
+.git
+.gitignore
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+
+# Testing
+coverage
+*.test.*
+vitest.config.*
+__tests__
+
+# Misc
+README.md
+LICENSE
+.env*.local
