@@ -173,11 +173,18 @@ export default function CanvasPage() {
 
     const stageRef = useRef(null);
     const fileInputRef = useRef(null);
+
+    // Touch/pointer support refs
+    const isPinchingRef = useRef(false);
+    const lastDistanceRef = useRef(null);
+    const lastCenterRef = useRef(null);
+    const isDrawingRef = useRef(false);
     const [tool, setTool] = useState('pen');
     const [elements, setElements] = useState([]);
     const [history, setHistory] = useState([[]]);
     const [historyStep, setHistoryStep] = useState(0);
-    const [isDrawing, setIsDrawing] = useState(false);
+    const [isDrawing, setIsDrawingState] = useState(false);
+    const setIsDrawing = (val) => { isDrawingRef.current = val; setIsDrawingState(val); };
     const [currentPoints, setCurrentPoints] = useState([]);
     const [selectedId, setSelectedId] = useState(null);
 
@@ -1427,9 +1434,7 @@ export default function CanvasPage() {
      * Handle mouse down - start drawing
      */
     const handleMouseDown = (e) => {
-        const activeTool = resolveToolForMode(tool, workspaceMode);
-
-        if (activeTool === 'select') {
+        if (tool === 'select') {
             const clickedOnEmpty = e.target === e.target.getStage();
             if (clickedOnEmpty) {
                 setSelectedId(null);
@@ -1444,6 +1449,7 @@ export default function CanvasPage() {
 
         const stage = e.target.getStage();
         const point = stage.getPointerPosition();
+        if (!point) return;
         const adjustedPoint = {
             x: (point.x - stagePos.x) / stageScale,
             y: (point.y - stagePos.y) / stageScale,
@@ -1508,8 +1514,6 @@ export default function CanvasPage() {
      * Handle mouse move - continue drawing
      */
     const handleMouseMove = (e) => {
-        const activeTool = resolveToolForMode(tool, workspaceMode);
-
         // Broadcast cursor position to other users (runs even when not drawing)
         const stage = e.target.getStage();
         const pointer = stage.getPointerPosition();
@@ -1603,9 +1607,6 @@ export default function CanvasPage() {
      * Handle mouse up - finish drawing
      */
     const handleMouseUp = () => {
-        const activeTool = resolveToolForMode(tool, workspaceMode);
-        const activeFlowShape = getFlowchartShapeDef(tool);
-
         if (!isDrawing) return;
         setIsDrawing(false);
 
@@ -1678,44 +1679,6 @@ export default function CanvasPage() {
 
         setCurrentPoints([]);
     };
-
-    const handleFlowchartShapeDrop = useCallback((e) => {
-        if (workspaceMode !== 'flowchart' || !draggingFlowShapeId || !stageRef.current) return;
-
-        e.preventDefault();
-        const shapeDef = getFlowchartShapeDef(draggingFlowShapeId);
-        setDraggingFlowShapeId(null);
-        if (!shapeDef) return;
-
-        const stageRect = stageRef.current.container().getBoundingClientRect();
-        const x = (e.clientX - stageRect.left - stagePos.x) / stageScale;
-        const y = (e.clientY - stageRect.top - stagePos.y) / stageScale;
-
-        const newShape = {
-            id: Date.now(),
-            type: shapeDef.shapeType,
-            x: x - (shapeDef.w / 2),
-            y: y - (shapeDef.h / 2),
-            width: shapeDef.w,
-            height: shapeDef.h,
-            fill: shapeDef.fill,
-            stroke: shapeDef.stroke,
-            strokeWidth: strokeWidth,
-            flowNodeType: shapeDef.id,
-            text: shapeDef.label,
-            fontSize: 13,
-            textColor: '#1e293b',
-            textAlign: 'center',
-        };
-
-        if (shapeDef.id === 'fc-terminal' || shapeDef.id === 'fc-delay') {
-            newShape.cornerRadius = Math.max(8, Math.min(newShape.width, newShape.height) / 2);
-        }
-
-        saveToHistory([...elements, newShape]);
-        setFlowConnectStart(null);
-        setTool('select');
-    }, [workspaceMode, draggingFlowShapeId, stagePos.x, stagePos.y, stageScale, strokeWidth, saveToHistory, elements]);
 
     /**
      * Handle wheel - zoom in/out
@@ -2879,23 +2842,11 @@ export default function CanvasPage() {
                     </div>
 
                     {/* Canvas */}
-                    <div
-                        ref={stageContainerRef}
-                        className="flex-1 overflow-hidden bg-zinc-100/50 relative"
-                        onDragOver={(e) => {
-                            if (workspaceMode === 'flowchart' && draggingFlowShapeId) {
-                                e.preventDefault();
-                            }
-                        }}
-                        onDrop={handleFlowchartShapeDrop}
-                    >
-                        {/* Subtle inner shadow for depth */}
-                        <div className="absolute inset-0 shadow-[inner_0_2px_10px_rgba(0,0,0,0.05)] pointer-events-none z-10" />
-
+                    <div className="flex-1 overflow-hidden bg-gray-100">
                         <Stage
                             ref={stageRef}
-                            width={canvasSize.width}
-                            height={canvasSize.height}
+                            width={CANVAS_WIDTH}
+                            height={CANVAS_HEIGHT}
                             onMouseDown={handleMouseDown}
                             onMouseMove={handleMouseMove}
                             onMouseUp={handleMouseUp}
@@ -2924,7 +2875,7 @@ export default function CanvasPage() {
                             scaleY={stageScale}
                             x={stagePos.x}
                             y={stagePos.y}
-                            draggable={(activeCanvasTool === 'select' && !selectedId) || activeCanvasTool === 'pan'}
+                            draggable={tool === 'select' && !selectedId}
                         >
                             <Layer>
                                 {/* Background pattern - grid or dots */}
