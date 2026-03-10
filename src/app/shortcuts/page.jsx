@@ -21,9 +21,10 @@ import { useShortcuts } from "@/contexts/ShortcutContext";
 // ─── Dark mode detection ────────────────────────────────────────────
 
 function useDarkMode() {
-    const [isDark, setIsDark] = useState(false);
+    const [isDark, setIsDark] = useState(
+        () => typeof document !== "undefined" && document.documentElement.classList.contains("dark")
+    );
     useEffect(() => {
-        setIsDark(document.documentElement.classList.contains("dark"));
         const obs = new MutationObserver(() =>
             setIsDark(document.documentElement.classList.contains("dark"))
         );
@@ -69,8 +70,8 @@ function KeyBadge({ children, isDark }) {
     return (
         <kbd
             className={`inline-flex items-center justify-center min-w-[32px] h-8 px-2.5 backdrop-blur-sm rounded-lg text-xs font-mono font-semibold shadow-sm transition-colors ${isDark
-                    ? "bg-white/10 border border-white/10 text-slate-200"
-                    : "bg-white/60 border border-slate-200/60 text-slate-700"
+                ? "bg-white/10 border border-white/10 text-slate-200"
+                : "bg-white/60 border border-slate-200/60 text-slate-700"
                 }`}
         >
             {children}
@@ -102,8 +103,8 @@ function ShortcutRow({ actionId, combo, description, isDark, onEdit }) {
                 <button
                     onClick={() => onEdit(actionId)}
                     className={`p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all ${isDark
-                            ? "hover:bg-white/10 text-slate-400 hover:text-slate-200"
-                            : "hover:bg-slate-100 text-slate-400 hover:text-slate-700"
+                        ? "hover:bg-white/10 text-slate-400 hover:text-slate-200"
+                        : "hover:bg-slate-100 text-slate-400 hover:text-slate-700"
                         }`}
                     title="Edit shortcut"
                 >
@@ -127,8 +128,8 @@ function ShortcutSection({ title, icon: Icon, items, color, isDark, onEdit }) {
             </div>
             <div
                 className={`rounded-2xl p-5 shadow-lg ${isDark
-                        ? "bg-[var(--color-bg-base)]/50 border border-[var(--color-border-ui)] shadow-purple-500/5"
-                        : "bg-white/60 backdrop-blur-xl border border-white/50 shadow-indigo-500/5"
+                    ? "bg-[var(--color-bg-base)]/50 border border-[var(--color-border-ui)] shadow-purple-500/5"
+                    : "bg-white/60 backdrop-blur-xl border border-white/50 shadow-indigo-500/5"
                     }`}
             >
                 {items.map(([actionId, s]) => (
@@ -178,8 +179,8 @@ function KeyRecorderModal({ actionId, description, isDark, onSave, onCancel, cur
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
             <div
                 className={`w-full max-w-sm rounded-2xl p-6 shadow-2xl border ${isDark
-                        ? "bg-[var(--color-card)] border-[var(--color-border-ui)]"
-                        : "bg-white border-slate-200"
+                    ? "bg-[var(--color-card)] border-[var(--color-border-ui)]"
+                    : "bg-white border-slate-200"
                     }`}
             >
                 {/* Header */}
@@ -204,8 +205,8 @@ function KeyRecorderModal({ actionId, description, isDark, onSave, onCancel, cur
                 {/* Recorder area */}
                 <div
                     className={`flex items-center justify-center h-20 rounded-xl border-2 border-dashed mb-4 ${isDark
-                            ? "border-purple-500/40 bg-purple-500/5"
-                            : "border-indigo-300 bg-indigo-50/50"
+                        ? "border-purple-500/40 bg-purple-500/5"
+                        : "border-indigo-300 bg-indigo-50/50"
                         }`}
                 >
                     {captured ? (
@@ -236,8 +237,8 @@ function KeyRecorderModal({ actionId, description, isDark, onSave, onCancel, cur
                     <button
                         onClick={onCancel}
                         className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors ${isDark
-                                ? "bg-white/5 text-slate-400 hover:bg-white/10"
-                                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                            ? "bg-white/5 text-slate-400 hover:bg-white/10"
+                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                             }`}
                     >
                         Cancel
@@ -246,10 +247,10 @@ function KeyRecorderModal({ actionId, description, isDark, onSave, onCancel, cur
                         onClick={handleSave}
                         disabled={!captured}
                         className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${captured
-                                ? "bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-lg shadow-purple-500/25 hover:shadow-purple-500/40 hover:-translate-y-0.5"
-                                : isDark
-                                    ? "bg-white/5 text-slate-600 cursor-not-allowed"
-                                    : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                            ? "bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-lg shadow-purple-500/25 hover:shadow-purple-500/40 hover:-translate-y-0.5"
+                            : isDark
+                                ? "bg-white/5 text-slate-600 cursor-not-allowed"
+                                : "bg-slate-100 text-slate-400 cursor-not-allowed"
                             }`}
                     >
                         Save
@@ -312,8 +313,8 @@ export default function ShortcutsPage() {
                     <button
                         onClick={() => router.back()}
                         className={`p-2.5 backdrop-blur-xl rounded-xl shadow-sm hover:shadow-md transition-all ${isDark
-                                ? "bg-[var(--color-card)] border border-[var(--color-border-ui)] hover:bg-white/10"
-                                : "bg-white/70 border border-white/50 hover:bg-white/90"
+                            ? "bg-[var(--color-card)] border border-[var(--color-border-ui)] hover:bg-white/10"
+                            : "bg-white/70 border border-white/50 hover:bg-white/90"
                             }`}
                         aria-label="Go back"
                     >
@@ -332,8 +333,8 @@ export default function ShortcutsPage() {
                 {/* Main Card */}
                 <div
                     className={`rounded-3xl p-8 shadow-2xl transition-colors duration-300 ${isDark
-                            ? "bg-[var(--color-card)] border border-[var(--color-border-ui)] shadow-purple-500/10"
-                            : "bg-white/70 backdrop-blur-3xl border border-white/50 shadow-indigo-500/10"
+                        ? "bg-[var(--color-card)] border border-[var(--color-border-ui)] shadow-purple-500/10"
+                        : "bg-white/70 backdrop-blur-3xl border border-white/50 shadow-indigo-500/10"
                         }`}
                 >
                     {/* Header Icon */}
@@ -367,8 +368,8 @@ export default function ShortcutsPage() {
                     {/* Tip Box */}
                     <div
                         className={`mt-6 rounded-2xl p-5 ${isDark
-                                ? "bg-purple-500/10 border border-purple-500/30"
-                                : "bg-gradient-to-r from-indigo-50/80 to-purple-50/80 backdrop-blur-sm border border-indigo-200/50"
+                            ? "bg-purple-500/10 border border-purple-500/30"
+                            : "bg-gradient-to-r from-indigo-50/80 to-purple-50/80 backdrop-blur-sm border border-indigo-200/50"
                             }`}
                     >
                         <p className={`text-sm font-medium ${isDark ? "text-purple-300" : "text-indigo-700"}`}>
@@ -381,8 +382,8 @@ export default function ShortcutsPage() {
                     <button
                         onClick={resetToDefaults}
                         className={`mt-4 w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all ${isDark
-                                ? "text-slate-400 hover:text-slate-200 hover:bg-white/5"
-                                : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+                            ? "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+                            : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
                             }`}
                     >
                         <RotateCcw size={14} />

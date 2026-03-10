@@ -10,11 +10,12 @@ import {
     MousePointer2, Pencil, Type, Square, Circle as CircleIcon, Triangle,
     Star as StarIcon, ArrowRight, Minus, Hexagon, Pentagon, Trash2,
     ZoomIn, ZoomOut, Maximize2, Eraser, Undo, Redo, Settings, LogOut,
-    ChevronLeft, ChevronRight
+    ChevronLeft, ChevronRight, Sparkles
 } from 'lucide-react';
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { useRouter } from "next/navigation";
+import AIChatSidebar from '@/components/AIChatSidebar';
 
 const CANVAS_WIDTH = typeof window !== 'undefined' ? window.innerWidth - 480 : 1200;
 const CANVAS_HEIGHT = typeof window !== 'undefined' ? window.innerHeight - 56 : 800;
@@ -32,6 +33,7 @@ export default function CanvasPage() {
     const [currentPoints, setCurrentPoints] = useState([]);
     const [selectedId, setSelectedId] = useState(null);
     const [user, setUser] = useState(null);
+    const [isAiSidebarOpen, setIsAiSidebarOpen] = useState(false);
     const router = useRouter();
 
     // Handle Authentication
@@ -969,6 +971,75 @@ export default function CanvasPage() {
 
     const selectedElement = elements.find(el => el.id === selectedId);
 
+    const handleAiCanvasUpdate = useCallback((args) => {
+        const { action, elementParams } = args;
+        let newElements = [...elements];
+
+        console.log('[AI Copilot] Received action:', action, elementParams);
+
+        if (action === 'clear') {
+            saveToHistory([]);
+            setSelectedId(null);
+            return;
+        }
+
+        if (action === 'delete') {
+            if (elementParams?.targetId) {
+                newElements = newElements.filter((el) => el.id !== parseInt(elementParams.targetId));
+                saveToHistory(newElements);
+                if (selectedId === parseInt(elementParams.targetId)) {
+                    setSelectedId(null);
+                }
+            } else if (selectedId) {
+                newElements = newElements.filter((el) => el.id !== selectedId);
+                saveToHistory(newElements);
+                setSelectedId(null);
+            }
+            return;
+        }
+
+        if (action === 'add') {
+            const newElement = {
+                id: Date.now(),
+                type: elementParams.type || 'rect',
+                x: elementParams.x || CANVAS_WIDTH / 2 - 50,
+                y: elementParams.y || CANVAS_HEIGHT / 2 - 50,
+                width: elementParams.width || 100,
+                height: elementParams.height || 100,
+                radius: elementParams.radius || 50,
+                fill: elementParams.fill || '#3b82f6',
+                text: elementParams.text || 'AI Text',
+                fontSize: elementParams.fontSize || 24,
+                ...elementParams.properties
+            };
+            saveToHistory([...newElements, newElement]);
+            return;
+        }
+
+        if (action === 'update' && elementParams?.targetId) {
+            newElements = newElements.map(el => {
+                if (el.id === parseInt(elementParams.targetId)) {
+                    return { ...el, ...elementParams };
+                }
+                return el;
+            });
+            saveToHistory(newElements);
+        }
+    }, [elements, saveToHistory, selectedId]);
+
+    const handleAiAddImage = useCallback((imageUrl) => {
+        const newImage = {
+            id: Date.now(),
+            type: 'image',
+            x: CANVAS_WIDTH / 2 - 256,
+            y: CANVAS_HEIGHT / 2 - 256,
+            width: 512,
+            height: 512,
+            url: imageUrl
+        };
+        saveToHistory([...elements, newImage]);
+    }, [elements, saveToHistory]);
+
     return (
         <div className="flex flex-col h-screen w-full overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100">
             {/* Header */}
@@ -1046,6 +1117,14 @@ export default function CanvasPage() {
 
                 {/* User Profile & Settings */}
                 <div className="flex items-center gap-3 ml-4 pl-4 border-l border-gray-200">
+                    <button
+                        onClick={() => setIsAiSidebarOpen(true)}
+                        className="flex items-center gap-2 px-3 py-1.5 mr-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors font-medium text-sm border border-blue-100"
+                        title="Open Gemini AI"
+                    >
+                        <Sparkles size={16} />
+                        <span className="hidden sm:inline">Ask AI</span>
+                    </button>
                     <button
                         onClick={() => router.push("/settings_page")}
                         className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
@@ -1366,6 +1445,15 @@ export default function CanvasPage() {
                     )}
                 </div>
             </div>
+
+            {/* AI Chat Sidebar Overlay */}
+            <AIChatSidebar
+                isOpen={isAiSidebarOpen}
+                onClose={() => setIsAiSidebarOpen(false)}
+                canvasElements={elements}
+                onAddImage={handleAiAddImage}
+                onUpdateCanvas={handleAiCanvasUpdate}
+            />
         </div>
     );
 }

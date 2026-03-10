@@ -15,7 +15,7 @@ import {
     Copy, Clipboard, Download, AlignLeft, AlignCenter, AlignRight, AlignStartVertical,
     AlignCenterVertical, AlignEndVertical, Layers, Grid3X3, Eye, EyeOff, Lock, Unlock,
     ChevronUp, ChevronDown, ChevronsUp, ChevronsDown, Group as GroupIcon, Ungroup, RotateCw,
-    Database, User, StickyNote, Diamond, Activity, Zap, PlayCircle, StopCircle, Move, GitMerge, Map
+    Database, User, StickyNote, Diamond, Activity, Zap, PlayCircle, StopCircle, Move, GitMerge, Map, Sparkles
 } from 'lucide-react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, setDoc, getDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
@@ -24,6 +24,7 @@ import { auth, db, storage } from '@/lib/firebase';
 import LayersPanel from '@/components/LayersPanel';
 import LiveCursors from '@/components/LiveCursors';
 import CollaborationPanel from '@/components/CollaborationPanel';
+import AIChatSidebar from '@/components/AIChatSidebar';
 import { useShortcuts } from '@/contexts/ShortcutContext';
 import useCollaboration from '@/hooks/useCollaboration';
 
@@ -223,6 +224,7 @@ export default function CanvasPage() {
     const [isExporting, setIsExporting] = useState(false);
     const transformerRef = useRef(null);
     const [showSharePanel, setShowSharePanel] = useState(false);
+    const [isAiSidebarOpen, setIsAiSidebarOpen] = useState(false);
     const [accessDenied, setAccessDenied] = useState(false);
 
     // Font settings for text elements
@@ -2512,6 +2514,90 @@ export default function CanvasPage() {
         })()
         : null;
 
+    const handleAiCanvasUpdate = useCallback((args) => {
+        const { action, elementParams } = args;
+        console.log('[AI Copilot - Collab] Received action:', action, elementParams);
+
+        if (action === 'clear') {
+            setElements([]);
+            setSelectedId(null);
+            return;
+        }
+
+        if (action === 'delete') {
+            if (elementParams?.targetId) {
+                setElements(prev => prev.filter((el) => el.id !== parseInt(elementParams.targetId)));
+                if (selectedId === parseInt(elementParams.targetId)) {
+                    setSelectedId(null);
+                }
+            } else if (selectedId) {
+                setElements(prev => prev.filter((el) => el.id !== selectedId));
+                setSelectedId(null);
+            }
+            return;
+        }
+
+        if (action === 'add') {
+            const newElement = {
+                id: Date.now(),
+                type: elementParams.type || 'rectangle',
+                x: elementParams.x || CANVAS_WIDTH / 2 - 50,
+                y: elementParams.y || CANVAS_HEIGHT / 2 - 50,
+                width: elementParams.width || 100,
+                height: elementParams.height || 100,
+                radius: elementParams.radius || 50,
+                fill: elementParams.fill || '#3b82f6',
+                stroke: elementParams.stroke,
+                strokeWidth: elementParams.strokeWidth,
+                opacity: elementParams.opacity ?? 1,
+                cornerRadius: elementParams.cornerRadius,
+                shadowColor: elementParams.shadowColor,
+                shadowBlur: elementParams.shadowBlur,
+                shadowOffsetX: elementParams.shadowOffsetX,
+                shadowOffsetY: elementParams.shadowOffsetY,
+                text: elementParams.text || (elementParams.type === 'text' ? 'AI Text' : undefined),
+                fontSize: elementParams.fontSize || 24,
+                fontFamily: elementParams.fontFamily,
+                fontWeight: elementParams.fontWeight,
+                fontStyle: elementParams.fontStyle,
+                textAlign: elementParams.textAlign,
+                ...elementParams.properties
+            };
+
+            // Clean up undefined properties so they don't override defaults later
+            Object.keys(newElement).forEach(key => newElement[key] === undefined && delete newElement[key]);
+
+            setElements(prev => [...prev, newElement]);
+            return;
+        }
+
+        if (action === 'update' && elementParams?.targetId) {
+            setElements(prev => prev.map(el => {
+                if (el.id === parseInt(elementParams.targetId)) {
+                    // Don't overwrite essential properties if the AI didn't provide them, except for the explicit update
+                    const updates = { ...elementParams };
+                    delete updates.targetId;
+                    delete updates.action;
+                    return { ...el, ...updates };
+                }
+                return el;
+            }));
+        }
+    }, [selectedId, setElements]);
+
+    const handleAiAddImage = useCallback((imageUrl) => {
+        const newImage = {
+            id: Date.now(),
+            type: 'image',
+            x: CANVAS_WIDTH / 2 - 256,
+            y: CANVAS_HEIGHT / 2 - 256,
+            width: 512,
+            height: 512,
+            url: imageUrl
+        };
+        setElements(prev => [...prev, newImage]);
+    }, [setElements]);
+
     if (loading) {
         return (
             <div className="flex h-screen w-full items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
@@ -2542,10 +2628,22 @@ export default function CanvasPage() {
         );
     }
 
+
+
     return (
         <div className="flex h-screen w-full overflow-hidden bg-[var(--color-bg-base)]">
 
 
+            {/* AI Chat Sidebar Overlay */}
+            <AIChatSidebar
+                isOpen={isAiSidebarOpen}
+                onClose={() => setIsAiSidebarOpen(false)}
+                canvasElements={elements}
+                onAddImage={handleAiAddImage}
+                onUpdateCanvas={handleAiCanvasUpdate}
+            />
+
+            {/* Collaboration share panel */}
             <CollaborationPanel
                 isOpen={showSharePanel}
                 onClose={() => setShowSharePanel(false)}
@@ -2673,6 +2771,16 @@ export default function CanvasPage() {
                                     <Zap size={14} className="fill-purple-600" />
                                 </div>
                                 <span className="text-xs font-bold uppercase tracking-wider">Share</span>
+                            </button>
+
+                            {/* AI Button */}
+                            <button
+                                onClick={() => setIsAiSidebarOpen(true)}
+                                className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors font-medium text-sm border border-blue-100"
+                                title="Open Gemini AI"
+                            >
+                                <Sparkles size={16} />
+                                <span className="hidden sm:inline">Ask AI</span>
                             </button>
                         </div>
 

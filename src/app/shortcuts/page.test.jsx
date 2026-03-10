@@ -25,7 +25,7 @@ describe('Shortcuts Page Integration Tests', () => {
         expect(screen.getByText('Click the pencil icon to customize any shortcut')).toBeInTheDocument();
     });
 
-    it('renders shortcut sections', () => {
+    it('renders Canvas and Tool Selection shortcut sections', () => {
         renderWithProvider(<ShortcutsPage />);
         expect(screen.getByText('Canvas')).toBeInTheDocument();
         expect(screen.getByText('Tool Selection')).toBeInTheDocument();
@@ -36,18 +36,11 @@ describe('Shortcuts Page Integration Tests', () => {
         expect(screen.getByText('Undo action')).toBeInTheDocument();
         expect(screen.getByText('Redo action')).toBeInTheDocument();
         expect(screen.getByText('Save canvas')).toBeInTheDocument();
-    });
-
-    it('renders correct Canvas shortcuts (5 items)', () => {
-        renderWithProvider(<ShortcutsPage />);
-        expect(screen.getByText('Undo action')).toBeInTheDocument();
-        expect(screen.getByText('Redo action')).toBeInTheDocument();
-        expect(screen.getByText('Save canvas')).toBeInTheDocument();
         expect(screen.getByText('Delete selected element')).toBeInTheDocument();
         expect(screen.getByText('Deselect / Cancel drawing')).toBeInTheDocument();
     });
 
-    it('renders correct Tool Selection shortcuts (9 items)', () => {
+    it('renders correct Tool Selection shortcuts', () => {
         renderWithProvider(<ShortcutsPage />);
         expect(screen.getByText('Select tool')).toBeInTheDocument();
         expect(screen.getByText('Pen tool')).toBeInTheDocument();
@@ -62,9 +55,9 @@ describe('Shortcuts Page Integration Tests', () => {
 
     it('renders KeyBadge elements for key combinations', () => {
         renderWithProvider(<ShortcutsPage />);
-        // Ctrl key should appear multiple times
+        // Ctrl key should appear multiple times for canvas shortcuts
         const ctrlBadges = screen.getAllByText('Ctrl');
-        expect(ctrlBadges.length).toBeGreaterThanOrEqual(3); // Ctrl+K, Ctrl+,, Ctrl+Z, Ctrl+Y, Ctrl+S
+        expect(ctrlBadges.length).toBeGreaterThanOrEqual(3);
     });
 
     it('renders the Tip section', () => {

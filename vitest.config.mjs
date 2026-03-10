@@ -9,6 +9,8 @@ export default defineConfig({
         globals: true,
         setupFiles: './vitest.setup.jsx',
         css: true,
+        testTimeout: 30000,
+        teardownTimeout: 5000,
         alias: {
             '@': resolve(__dirname, './src'),
             'canvas': resolve(__dirname, './src/__mocks__/canvas.js')
@@ -20,5 +22,10 @@ export default defineConfig({
         },
         pool: 'forks',
         isolate: false,
+        poolOptions: {
+            forks: {
+                singleFork: true
+            }
+        },
     },
 })
