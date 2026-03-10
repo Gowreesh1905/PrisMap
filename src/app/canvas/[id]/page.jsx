@@ -65,11 +65,18 @@ export default function CanvasPage() {
 
     const stageRef = useRef(null);
     const fileInputRef = useRef(null);
+
+    // Touch/pointer support refs
+    const isPinchingRef = useRef(false);
+    const lastDistanceRef = useRef(null);
+    const lastCenterRef = useRef(null);
+    const isDrawingRef = useRef(false);
     const [tool, setTool] = useState('pen');
     const [elements, setElements] = useState([]);
     const [history, setHistory] = useState([[]]);
     const [historyStep, setHistoryStep] = useState(0);
-    const [isDrawing, setIsDrawing] = useState(false);
+    const [isDrawing, setIsDrawingState] = useState(false);
+    const setIsDrawing = (val) => { isDrawingRef.current = val; setIsDrawingState(val); };
     const [currentPoints, setCurrentPoints] = useState([]);
     const [selectedId, setSelectedId] = useState(null);
 
@@ -870,9 +877,61 @@ export default function CanvasPage() {
     }, [undo, redo, isEditingTitle, saveCanvas, elements, canvasTitle, copySelected, pasteClipboard, duplicateSelected, selectedId, saveToHistory, bringToFront, sendToBack, bringForward, sendBackward, getComboToActionMap]);
 
     /**
-     * Handle mouse down - start drawing
+     * Disable browser touch gestures on the canvas container
      */
-    const handleMouseDown = (e) => {
+    useEffect(() => {
+        let nativeTouchCleanup = null;
+
+        const fixContainer = () => {
+            if (stageRef.current) {
+                const container = stageRef.current.container();
+                if (container) {
+                    container.style.touchAction = 'none';
+                    container.style.userSelect = 'none';
+                    container.style.webkitUserSelect = 'none';
+                    container.style.webkitTouchCallout = 'none';
+
+                    const preventTouch = (e) => { e.preventDefault(); };
+                    container.addEventListener('touchstart', preventTouch, { passive: false });
+                    container.addEventListener('touchmove', preventTouch, { passive: false });
+
+                    nativeTouchCleanup = () => {
+                        container.removeEventListener('touchstart', preventTouch);
+                        container.removeEventListener('touchmove', preventTouch);
+                    };
+                }
+            }
+        };
+
+        fixContainer();
+        const timeout = setTimeout(fixContainer, 500);
+
+        return () => {
+            clearTimeout(timeout);
+            nativeTouchCleanup?.();
+        };
+    }, []);
+
+    /**
+ * Handle pointer down - start drawing (supports mouse + touch)
+ */
+    const handlePointerDown = (e) => {
+        // Prevent default browser behaviors like scrolling or text selection
+        if (e.evt && e.evt.preventDefault) e.evt.preventDefault();
+
+        // Only handle primary pointer (ignore secondary touches for pinch)
+        if (e.evt && e.evt.isPrimary === false) return;
+
+        // Abort if multi-touch detected
+        if (e.evt && e.evt.touches && e.evt.touches.length > 1) {
+            setIsDrawing(false);
+            setCurrentPoints([]);
+            return;
+        }
+
+        // Mouse: only allow left click
+        if (e.evt && e.evt.pointerType === 'mouse' && e.evt.button !== 0) return;
+
         if (tool === 'select') {
             const clickedOnEmpty = e.target === e.target.getStage();
             if (clickedOnEmpty) {
@@ -884,6 +943,7 @@ export default function CanvasPage() {
 
         const stage = e.target.getStage();
         const point = stage.getPointerPosition();
+        if (!point) return;
         const adjustedPoint = {
             x: (point.x - stagePos.x) / stageScale,
             y: (point.y - stagePos.y) / stageScale,
@@ -919,9 +979,21 @@ export default function CanvasPage() {
     };
 
     /**
-     * Handle mouse move - continue drawing
-     */
-    const handleMouseMove = (e) => {
+    * Handle pointer move - continue drawing (supports mouse + touch)
+    */
+    const handlePointerMove = (e) => {
+        if (e.evt && e.evt.preventDefault) e.evt.preventDefault();
+
+        // Only handle primary pointer
+        if (e.evt && e.evt.isPrimary === false) return;
+
+        // Abort if multi-touch
+        if (e.evt && e.evt.touches && e.evt.touches.length > 1) {
+            setIsDrawing(false);
+            setCurrentPoints([]);
+            return;
+        }
+
         // Broadcast cursor position to other users (runs even when not drawing)
         const stage = e.target.getStage();
         const pointer = stage.getPointerPosition();
@@ -1004,9 +1076,10 @@ export default function CanvasPage() {
     };
 
     /**
-     * Handle mouse up - finish drawing
-     */
-    const handleMouseUp = () => {
+    * Handle pointer up - finish drawing (supports mouse + touch)
+    */
+    const handlePointerUp = (e) => {
+        if (e && e.evt && e.evt.preventDefault) e.evt.preventDefault();
         if (!isDrawing) return;
         setIsDrawing(false);
 
@@ -1044,6 +1117,78 @@ export default function CanvasPage() {
         }
 
         setCurrentPoints([]);
+    };
+
+    /**
+    * Touch handlers for pinch-to-zoom
+    */
+    const handleTouchStart = (e) => {
+        const touch1 = e.evt.touches[0];
+        const touch2 = e.evt.touches[1];
+        if (touch1 && touch2) {
+            isPinchingRef.current = true;
+            if (isDrawingRef.current) {
+                setIsDrawing(false);
+                setCurrentPoints([]);
+            }
+        }
+    };
+
+    const handleTouchMove = (e) => {
+        if (e.evt && e.evt.preventDefault) e.evt.preventDefault();
+        if (!e.evt.touches || e.evt.touches.length < 2) return;
+
+        const touch1 = e.evt.touches[0];
+        const touch2 = e.evt.touches[1];
+
+        if (isDrawingRef.current) {
+            setIsDrawing(false);
+            setCurrentPoints([]);
+        }
+
+        isPinchingRef.current = true;
+
+        const stage = stageRef.current;
+        const container = stage.container();
+        const rect = container.getBoundingClientRect();
+
+        const dist = Math.sqrt(
+            Math.pow(touch2.clientX - touch1.clientX, 2) +
+            Math.pow(touch2.clientY - touch1.clientY, 2)
+        );
+
+        const center = {
+            x: ((touch1.clientX + touch2.clientX) / 2) - rect.left,
+            y: ((touch1.clientY + touch2.clientY) / 2) - rect.top,
+        };
+
+        if (lastDistanceRef.current !== null) {
+            const scaleBy = dist / lastDistanceRef.current;
+            const oldScale = stageScale;
+            const newScale = Math.max(0.1, Math.min(5, oldScale * scaleBy));
+
+            const mousePointTo = {
+                x: (center.x - stage.x()) / oldScale,
+                y: (center.y - stage.y()) / oldScale,
+            };
+
+            setStageScale(newScale);
+            setStagePos({
+                x: center.x - mousePointTo.x * newScale,
+                y: center.y - mousePointTo.y * newScale,
+            });
+        }
+
+        lastDistanceRef.current = dist;
+        lastCenterRef.current = center;
+    };
+
+    const handleTouchEnd = (e) => {
+        if (isPinchingRef.current) {
+            lastDistanceRef.current = null;
+            lastCenterRef.current = null;
+            isPinchingRef.current = false;
+        }
     };
 
     /**
@@ -1737,14 +1882,19 @@ export default function CanvasPage() {
                 </div>
 
                 {/* Canvas */}
-                <div className="flex-1 overflow-hidden bg-gray-100">
+                <div className="flex-1 overflow-hidden bg-gray-100 touch-none">
                     <Stage
                         ref={stageRef}
                         width={CANVAS_WIDTH}
                         height={CANVAS_HEIGHT}
-                        onMouseDown={handleMouseDown}
-                        onMouseMove={handleMouseMove}
-                        onMouseUp={handleMouseUp}
+                        onPointerDown={handlePointerDown}
+                        onPointerMove={handlePointerMove}
+                        onPointerUp={handlePointerUp}
+                        onPointerCancel={handlePointerUp}
+                        onTouchStart={handleTouchStart}
+                        onTouchMove={handleTouchMove}
+                        onTouchEnd={handleTouchEnd}
+                        onTouchCancel={handleTouchEnd}
                         onWheel={handleWheel}
                         onDblClick={(e) => {
                             // Check if double-click was on a text node
