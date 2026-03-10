@@ -217,10 +217,99 @@ export default function CanvasPage() {
     }, [undo, redo, selectedId, deleteSelected]);
 
     /**
-     * Handle mouse down - start drawing
+     * Disable browser touch gestures and selection on the canvas container
      */
-    const handleMouseDown = (e) => {
-        if (tool === 'select') {
+    useEffect(() => {
+        let nativeTouchCleanup = null;
+
+        const fixContainer = () => {
+            if (stageRef.current) {
+                const container = stageRef.current.container();
+                if (container) {
+                    container.style.touchAction = 'none';
+                    container.style.userSelect = 'none';
+                    container.style.webkitUserSelect = 'none';
+                    container.style.webkitTouchCallout = 'none';
+
+                    // Native touch event listeners with { passive: false } to
+                    // reliably prevent browser scroll/zoom during drawing
+                    const preventTouch = (e) => { e.preventDefault(); };
+                    container.addEventListener('touchstart', preventTouch, { passive: false });
+                    container.addEventListener('touchmove', preventTouch, { passive: false });
+
+                    nativeTouchCleanup = () => {
+                        container.removeEventListener('touchstart', preventTouch);
+                        container.removeEventListener('touchmove', preventTouch);
+                    };
+                }
+            }
+        };
+
+        fixContainer();
+        const timeout = setTimeout(fixContainer, 500);
+
+        return () => {
+            clearTimeout(timeout);
+            nativeTouchCleanup?.();
+        };
+    }, []);
+
+    /**
+     * Refs to hold latest state for pointer handlers (to avoid stale closures/async lag)
+     */
+    const isDrawingRef = useRef(isDrawing);
+    const currentPointsRef = useRef(currentPoints);
+    const elementsRef = useRef(elements);
+    const toolRef = useRef(tool);
+    const strokeColorRef = useRef(strokeColor);
+    const fillColorRef = useRef(fillColor);
+    const strokeWidthRef = useRef(strokeWidth);
+
+    useEffect(() => { isDrawingRef.current = isDrawing; }, [isDrawing]);
+    useEffect(() => { currentPointsRef.current = currentPoints; }, [currentPoints]);
+    useEffect(() => { elementsRef.current = elements; }, [elements]);
+    useEffect(() => { toolRef.current = tool; }, [tool]);
+    useEffect(() => { strokeColorRef.current = strokeColor; }, [strokeColor]);
+    useEffect(() => { fillColorRef.current = fillColor; }, [fillColor]);
+    useEffect(() => { strokeWidthRef.current = strokeWidth; }, [strokeWidth]);
+
+    /**
+     * Pinch-to-zoom state
+     */
+    const lastDistanceRef = useRef(null);
+    const lastCenterRef = useRef(null);
+    const isPinchingRef = useRef(false);
+
+    /**
+     * Handle pointer down - start drawing or selection
+     */
+    const handlePointerDown = (e) => {
+        // Prevent default browser behaviors like scrolling or text selection
+        if (e.evt && e.evt.preventDefault) e.evt.preventDefault();
+
+        // 1. Strict Primary Pointer Check: Ignore secondary touches (for pinch/zoom)
+        if (e.evt && e.evt.isPrimary === false) return;
+
+        // 2. Handle Multi-Touch: If more than 1 finger is detectable, abort drawing
+        const isMultiTouch = e.evt && (
+            (e.evt.touches && e.evt.touches.length > 1) ||
+            (e.evt.targetTouches && e.evt.targetTouches.length > 1)
+        );
+
+        if (isMultiTouch) {
+            isDrawingRef.current = false;
+            setIsDrawing(false);
+            setCurrentPoints([]);
+            return;
+        }
+
+        // 3. Mouse Button Check: If it's a mouse, only allow left click (button 0)
+        if (e.evt && e.evt.pointerType === 'mouse' && e.evt.button !== 0) return;
+
+        const currentTool = toolRef.current;
+
+        // Selection mode
+        if (currentTool === 'select') {
             const clickedOnEmpty = e.target === e.target.getStage();
             if (clickedOnEmpty) {
                 setSelectedId(null);
@@ -230,15 +319,14 @@ export default function CanvasPage() {
 
         const stage = e.target.getStage();
         const point = stage.getPointerPosition();
+        if (!point) return;
+
         const adjustedPoint = {
             x: (point.x - stagePos.x) / stageScale,
             y: (point.y - stagePos.y) / stageScale,
         };
 
-        if (tool === 'pen' || tool === 'eraser') {
-            setIsDrawing(true);
-            setCurrentPoints([adjustedPoint.x, adjustedPoint.y]);
-        } else if (tool === 'text') {
+        if (currentTool === 'text') {
             const newText = {
                 id: Date.now(),
                 type: 'text',
@@ -246,47 +334,77 @@ export default function CanvasPage() {
                 y: adjustedPoint.y,
                 text: 'Double click to edit',
                 fontSize: 24,
-                fill: strokeColor,
+                fill: strokeColorRef.current,
             };
-            saveToHistory([...elements, newText]);
+            saveToHistory([...elementsRef.current, newText]);
             setSelectedId(newText.id);
-        } else {
-            setIsDrawing(true);
-            setCurrentPoints([adjustedPoint.x, adjustedPoint.y]);
+            return;
         }
+
+        // Initialize drawing for all other tools
+        isDrawingRef.current = true;
+        currentPointsRef.current = [adjustedPoint.x, adjustedPoint.y];
+        setIsDrawing(true);
+        setCurrentPoints([adjustedPoint.x, adjustedPoint.y]);
     };
 
     /**
-     * Handle mouse move - continue drawing
+     * Handle pointer move - continue drawing
      */
-    const handleMouseMove = (e) => {
-        if (!isDrawing) return;
+    const handlePointerMove = (e) => {
+        if (!isDrawingRef.current) return;
+
+        // 1. Ensure this is still the primary pointer
+        if (e.evt && e.evt.isPrimary === false) return;
+
+        // 2. Continuous Multi-Touch Check
+        const isMultiTouch = e.evt && (
+            (e.evt.touches && e.evt.touches.length > 1) ||
+            (e.evt.targetTouches && e.evt.targetTouches.length > 1)
+        );
+
+        if (isMultiTouch) {
+            isDrawingRef.current = false;
+            setIsDrawing(false);
+            setCurrentPoints([]);
+            return;
+        }
+
+        if (e.evt && e.evt.preventDefault) e.evt.preventDefault();
 
         const stage = e.target.getStage();
         const point = stage.getPointerPosition();
+        if (!point) return;
+
         const adjustedPoint = {
             x: (point.x - stagePos.x) / stageScale,
             y: (point.y - stagePos.y) / stageScale,
         };
 
-        if (tool === 'pen' || tool === 'eraser') {
-            setCurrentPoints([...currentPoints, adjustedPoint.x, adjustedPoint.y]);
+        const currentTool = toolRef.current;
+        const pts = currentPointsRef.current;
+
+        if (currentTool === 'pen' || currentTool === 'eraser') {
+            const newPoints = [...pts, adjustedPoint.x, adjustedPoint.y];
+            currentPointsRef.current = newPoints;
+            setCurrentPoints(newPoints);
 
             // For eraser, split strokes at intersection points
-            if (tool === 'eraser' && currentPoints.length >= 2) {
-                const eraserRadius = strokeWidth * 3;
+            if (currentTool === 'eraser' && newPoints.length >= 2) {
+                const eraserRadius = strokeWidthRef.current * 3;
                 const newElements = [];
                 let segmentCounter = 0;
+                let elementsChanged = false;
 
-                elements.forEach(el => {
+                elementsRef.current.forEach(el => {
                     if (el.type !== 'pen') {
                         newElements.push(el);
                         return;
                     }
 
-                    // Split the stroke into segments, removing points within eraser radius
                     const segments = [];
                     let currentSegment = [];
+                    let elChanged = false;
 
                     for (let i = 0; i < el.points.length; i += 2) {
                         const dx = el.points[i] - adjustedPoint.x;
@@ -294,98 +412,193 @@ export default function CanvasPage() {
                         const distance = Math.sqrt(dx * dx + dy * dy);
 
                         if (distance < eraserRadius) {
-                            // Point is being erased
                             if (currentSegment.length >= 4) {
-                                // Save current segment if it has at least 2 points
                                 segments.push([...currentSegment]);
                             }
                             currentSegment = [];
+                            elChanged = true;
                         } else {
-                            // Point survives
                             currentSegment.push(el.points[i], el.points[i + 1]);
                         }
                     }
 
-                    // Don't forget the last segment
                     if (currentSegment.length >= 4) {
                         segments.push(currentSegment);
                     }
 
-                    // Create new stroke elements for each segment
-                    segments.forEach(segmentPoints => {
-                        newElements.push({
-                            ...el,
-                            id: `${Date.now()}-${segmentCounter++}-${Math.random()}`, // Truly unique ID
-                            points: segmentPoints,
+                    if (elChanged) {
+                        elementsChanged = true;
+                        segments.forEach(segmentPoints => {
+                            newElements.push({
+                                ...el,
+                                id: `${Date.now()}-${segmentCounter++}-${Math.random()}`,
+                                points: segmentPoints,
+                            });
                         });
-                    });
+                    } else {
+                        newElements.push(el);
+                    }
                 });
 
-                if (newElements.length !== elements.length ||
-                    newElements.some((el, i) => el.id !== elements[i]?.id)) {
+                if (elementsChanged) {
                     setElements(newElements);
+                    elementsRef.current = newElements;
                 }
             }
         } else {
-            setCurrentPoints([currentPoints[0], currentPoints[1], adjustedPoint.x, adjustedPoint.y]);
+            const newPoints = [pts[0], pts[1], adjustedPoint.x, adjustedPoint.y];
+            currentPointsRef.current = newPoints;
+            setCurrentPoints(newPoints);
         }
     };
 
     /**
-     * Handle mouse up - finish drawing
+     * Handle pointer up - finish drawing
      */
-    const handleMouseUp = () => {
-        if (!isDrawing) return;
+    const handlePointerUp = (e) => {
+        // Prevent default browser behavior
+        if (e.evt && e.evt.preventDefault) e.evt.preventDefault();
+
+        if (!isDrawingRef.current) return;
+
+        isDrawingRef.current = false;
         setIsDrawing(false);
 
-        if (currentPoints.length < 4) {
+        const pts = currentPointsRef.current;
+
+        if (pts.length < 4) {
+            currentPointsRef.current = [];
             setCurrentPoints([]);
             return;
         }
 
-        if (tool === 'pen') {
+        const currentTool = toolRef.current;
+        const curElements = elementsRef.current;
+
+        if (currentTool === 'pen') {
             const newLine = {
                 id: Date.now(),
                 type: 'pen',
-                points: currentPoints,
-                stroke: strokeColor,
-                strokeWidth: strokeWidth,
+                points: pts,
+                stroke: strokeColorRef.current,
+                strokeWidth: strokeWidthRef.current,
             };
-            saveToHistory([...elements, newLine]);
-        } else if (tool === 'eraser') {
-            // Save the erased state to history
-            saveToHistory(elements);
-        } else if (tool !== 'select' && tool !== 'text') {
-            const [x1, y1, x2, y2] = currentPoints;
+            saveToHistory([...curElements, newLine]);
+        } else if (currentTool === 'eraser') {
+            saveToHistory(curElements);
+        } else if (currentTool !== 'select' && currentTool !== 'text') {
+            const [x1, y1, x2, y2] = pts;
 
-            // Lines and arrows store actual points for better hit detection
-            if (tool === 'line' || tool === 'arrow') {
+            if (currentTool === 'line' || currentTool === 'arrow') {
                 const newShape = {
                     id: Date.now(),
-                    type: tool,
+                    type: currentTool,
                     points: [x1, y1, x2, y2],
-                    fill: fillColor,
-                    stroke: strokeColor,
-                    strokeWidth: strokeWidth,
+                    fill: fillColorRef.current,
+                    stroke: strokeColorRef.current,
+                    strokeWidth: strokeWidthRef.current,
                 };
-                saveToHistory([...elements, newShape]);
+                saveToHistory([...curElements, newShape]);
             } else {
                 const newShape = {
                     id: Date.now(),
-                    type: tool,
+                    type: currentTool,
                     x: Math.min(x1, x2),
                     y: Math.min(y1, y2),
                     width: Math.abs(x2 - x1),
                     height: Math.abs(y2 - y1),
-                    fill: fillColor,
-                    stroke: strokeColor,
-                    strokeWidth: strokeWidth,
+                    fill: fillColorRef.current,
+                    stroke: strokeColorRef.current,
+                    strokeWidth: strokeWidthRef.current,
                 };
-                saveToHistory([...elements, newShape]);
+                saveToHistory([...curElements, newShape]);
             }
         }
 
+        currentPointsRef.current = [];
         setCurrentPoints([]);
+    };
+
+    /**
+     * Handle touch move for pinch-to-zoom
+     */
+    const handleTouchMove = (e) => {
+        // Prevent default to stop browser scrolling
+        if (e.evt && e.evt.preventDefault) e.evt.preventDefault();
+
+        // Only handle multi-touch (pinch-to-zoom). Single-finger is handled by pointer events.
+        if (!e.evt.touches || e.evt.touches.length < 2) return;
+
+        const touch1 = e.evt.touches[0];
+        const touch2 = e.evt.touches[1];
+
+        // Cancel any single-finger drawing when second finger is detected
+        if (isDrawingRef.current) {
+            isDrawingRef.current = false;
+            setIsDrawing(false);
+            setCurrentPoints([]);
+        }
+
+        isPinchingRef.current = true;
+
+        const stage = stageRef.current;
+        const container = stage.container();
+        const rect = container.getBoundingClientRect();
+
+        const dist = Math.sqrt(
+            Math.pow(touch2.clientX - touch1.clientX, 2) +
+            Math.pow(touch2.clientY - touch1.clientY, 2)
+        );
+
+        const center = {
+            x: ((touch1.clientX + touch2.clientX) / 2) - rect.left,
+            y: ((touch1.clientY + touch2.clientY) / 2) - rect.top,
+        };
+
+        if (lastDistanceRef.current !== null) {
+            const scaleBy = dist / lastDistanceRef.current;
+            const oldScale = stageScale;
+            const newScale = Math.max(0.1, Math.min(5, oldScale * scaleBy));
+
+            const mousePointTo = {
+                x: (center.x - stage.x()) / oldScale,
+                y: (center.y - stage.y()) / oldScale,
+            };
+
+            setStageScale(newScale);
+            setStagePos({
+                x: center.x - mousePointTo.x * newScale,
+                y: center.y - mousePointTo.y * newScale,
+            });
+        }
+
+        lastDistanceRef.current = dist;
+        lastCenterRef.current = center;
+    };
+
+    const handleTouchStart = (e) => {
+        const touch1 = e.evt.touches[0];
+        const touch2 = e.evt.touches[1];
+
+        if (touch1 && touch2) {
+            isPinchingRef.current = true;
+            // Cancel drawing if second finger touches down
+            if (isDrawingRef.current) {
+                isDrawingRef.current = false;
+                setIsDrawing(false);
+                setCurrentPoints([]);
+            }
+        }
+    };
+
+    const handleTouchEnd = (e) => {
+        // Only reset zoom tracking if we were in a pinch gesture
+        if (isPinchingRef.current) {
+            lastDistanceRef.current = null;
+            lastCenterRef.current = null;
+            isPinchingRef.current = false;
+        }
+        // Do NOT cancel single-finger drawing here — let handlePointerUp finalize it
     };
 
     /**
@@ -523,6 +736,7 @@ export default function CanvasPage() {
         const commonProps = {
             id: `shape-${shape.id}`,
             onClick: () => tool === 'select' && setSelectedId(shape.id),
+            onTap: () => tool === 'select' && setSelectedId(shape.id),
             draggable: tool === 'select' && !lineOrArrowSelectedAbove,
             listening: !lineOrArrowSelectedAbove || shape.id === selectedId,
             onDragEnd: (e) => {
@@ -723,6 +937,7 @@ export default function CanvasPage() {
                         fontSize={shape.fontSize || 24}
                         fill={shape.fill}
                         onDblClick={() => handleTextDblClick(shape.id)}
+                        onDblTap={() => handleTextDblClick(shape.id)}
                     />
                 );
 
@@ -776,54 +991,55 @@ export default function CanvasPage() {
                     {/* Undo/Redo */}
                     <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1 mr-2">
                         <button
-                            onClick={undo}
+                            onPointerDown={(e) => { e.preventDefault(); undo(); }}
                             disabled={historyStep === 0}
-                            className={`p-2 rounded transition-colors ${historyStep === 0
+                            className={`p-2.5 rounded-lg transition-colors ${historyStep === 0
                                 ? 'text-gray-300 cursor-not-allowed'
                                 : 'hover:bg-white text-gray-700'
                                 }`}
                             title="Undo (Ctrl+Z)"
                         >
-                            <Undo size={16} />
+                            <Undo size={18} />
                         </button>
                         <button
-                            onClick={redo}
+                            onPointerDown={(e) => { e.preventDefault(); redo(); }}
                             disabled={historyStep >= history.length - 1}
-                            className={`p-2 rounded transition-colors ${historyStep >= history.length - 1
+                            className={`p-2.5 rounded-lg transition-colors ${historyStep >= history.length - 1
                                 ? 'text-gray-300 cursor-not-allowed'
                                 : 'hover:bg-white text-gray-700'
                                 }`}
                             title="Redo (Ctrl+Y)"
                         >
-                            <Redo size={16} />
+                            <Redo size={18} />
                         </button>
                     </div>
 
                     {/* Zoom */}
                     <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
                         <button
-                            onClick={zoomOut}
-                            className="p-2 hover:bg-white rounded transition-colors"
+                            onPointerDown={(e) => { e.preventDefault(); zoomOut(); }}
+                            className="p-2.5 hover:bg-white rounded-lg transition-colors"
                             title="Zoom Out"
                         >
-                            <ZoomOut size={16} className="text-gray-700" />
+                            <ZoomOut size={18} />
                         </button>
-                        <span className="px-3 text-sm font-medium text-gray-700 min-w-[60px] text-center">
+                        <div className="px-2 text-xs font-bold text-gray-600 min-w-[3rem] text-center">
                             {Math.round(stageScale * 100)}%
-                        </span>
+                        </div>
                         <button
-                            onClick={zoomIn}
-                            className="p-2 hover:bg-white rounded transition-colors"
+                            onPointerDown={(e) => { e.preventDefault(); zoomIn(); }}
+                            className="p-2.5 hover:bg-white rounded-lg transition-colors"
                             title="Zoom In"
                         >
-                            <ZoomIn size={16} className="text-gray-700" />
+                            <ZoomIn size={18} />
                         </button>
+                        <div className="h-4 w-px bg-gray-300 mx-1" />
                         <button
-                            onClick={resetZoom}
-                            className="p-2 hover:bg-white rounded transition-colors ml-1"
+                            onPointerDown={(e) => { e.preventDefault(); resetZoom(); }}
+                            className="p-2.5 hover:bg-white rounded-lg transition-colors text-gray-700"
                             title="Reset Zoom"
                         >
-                            <Maximize2 size={16} className="text-gray-700" />
+                            <Maximize2 size={18} />
                         </button>
                     </div>
                 </div>
@@ -867,7 +1083,10 @@ export default function CanvasPage() {
                                 return (
                                     <button
                                         key={t.id}
-                                        onClick={() => setTool(t.id)}
+                                        onPointerDown={(e) => {
+                                            e.preventDefault();
+                                            setTool(t.id);
+                                        }}
                                         className={`flex flex-col items-center justify-center p-3 rounded-xl transition-all ${isActive
                                             ? 'bg-gradient-to-br from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/30'
                                             : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
@@ -892,7 +1111,10 @@ export default function CanvasPage() {
                                 return (
                                     <button
                                         key={s.id}
-                                        onClick={() => setTool(s.id)}
+                                        onPointerDown={(e) => {
+                                            e.preventDefault();
+                                            setTool(s.id);
+                                        }}
                                         className={`flex flex-col items-center justify-center p-3 rounded-xl transition-all ${isActive
                                             ? 'bg-gradient-to-br from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/30'
                                             : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
@@ -908,7 +1130,7 @@ export default function CanvasPage() {
 
                     <div className="pt-4 border-t border-gray-200">
                         <button
-                            onClick={clearCanvas}
+                            onPointerDown={(e) => { e.preventDefault(); clearCanvas(); }}
                             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 text-red-600 rounded-xl font-medium text-sm hover:bg-red-100 transition-colors border border-red-200"
                         >
                             <Trash2 size={16} />
@@ -930,14 +1152,23 @@ export default function CanvasPage() {
                 </div>
 
                 {/* Canvas */}
-                <div className="flex-1 overflow-hidden bg-gray-100">
+                <div className="flex-1 overflow-hidden bg-gray-100 touch-none">
                     <Stage
                         ref={stageRef}
                         width={CANVAS_WIDTH}
                         height={CANVAS_HEIGHT}
-                        onMouseDown={handleMouseDown}
-                        onMouseMove={handleMouseMove}
-                        onMouseUp={handleMouseUp}
+                        onPointerDown={handlePointerDown}
+                        onPointerMove={handlePointerMove}
+                        onPointerUp={handlePointerUp}
+                        onPointerCancel={handlePointerUp}
+                        onTouchStart={handleTouchStart}
+                        onTouchMove={handleTouchMove}
+                        onTouchEnd={handleTouchEnd}
+                        onTouchCancel={handleTouchEnd}
+                        onContextMenu={(e) => e.evt.preventDefault()}
+                        onDragEnd={(e) => {
+                            setStagePos({ x: e.target.x(), y: e.target.y() });
+                        }}
                         onWheel={handleWheel}
                         scaleX={stageScale}
                         scaleY={stageScale}
