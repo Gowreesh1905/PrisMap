@@ -1494,17 +1494,33 @@ export default function CanvasPage() {
         if (action === 'add') {
             const newElement = {
                 id: Date.now(),
-                type: elementParams.type || 'rect',
+                type: elementParams.type || 'rectangle',
                 x: elementParams.x || CANVAS_WIDTH / 2 - 50,
                 y: elementParams.y || CANVAS_HEIGHT / 2 - 50,
                 width: elementParams.width || 100,
                 height: elementParams.height || 100,
                 radius: elementParams.radius || 50,
                 fill: elementParams.fill || '#3b82f6',
-                text: elementParams.text || 'AI Text',
+                stroke: elementParams.stroke,
+                strokeWidth: elementParams.strokeWidth,
+                opacity: elementParams.opacity ?? 1,
+                cornerRadius: elementParams.cornerRadius,
+                shadowColor: elementParams.shadowColor,
+                shadowBlur: elementParams.shadowBlur,
+                shadowOffsetX: elementParams.shadowOffsetX,
+                shadowOffsetY: elementParams.shadowOffsetY,
+                text: elementParams.text || (elementParams.type === 'text' ? 'AI Text' : undefined),
                 fontSize: elementParams.fontSize || 24,
+                fontFamily: elementParams.fontFamily,
+                fontWeight: elementParams.fontWeight,
+                fontStyle: elementParams.fontStyle,
+                textAlign: elementParams.textAlign,
                 ...elementParams.properties
             };
+
+            // Clean up undefined properties so they don't override defaults later
+            Object.keys(newElement).forEach(key => newElement[key] === undefined && delete newElement[key]);
+
             setElements(prev => [...prev, newElement]);
             return;
         }
@@ -1512,7 +1528,11 @@ export default function CanvasPage() {
         if (action === 'update' && elementParams?.targetId) {
             setElements(prev => prev.map(el => {
                 if (el.id === parseInt(elementParams.targetId)) {
-                    return { ...el, ...elementParams };
+                    // Don't overwrite essential properties if the AI didn't provide them, except for the explicit update
+                    const updates = { ...elementParams };
+                    delete updates.targetId;
+                    delete updates.action;
+                    return { ...el, ...updates };
                 }
                 return el;
             }));
