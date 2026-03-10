@@ -2593,7 +2593,21 @@ export default function CanvasPage() {
                 </header>
 
                 {/* Main Workspace Area */}
-                <div className="flex flex-1 overflow-hidden">
+                <div className="flex flex-1 overflow-hidden relative">
+
+                    {/* Toolbar toggle button */}
+                    <button
+                        onClick={() => setIsToolbarVisible(v => !v)}
+                        className={`absolute top-1/2 -translate-y-1/2 z-30 w-5 h-12 bg-zinc-50/95 backdrop-blur-xl border border-zinc-200/50 shadow-lg flex items-center justify-center text-gray-400 hover:text-purple-600 transition-all duration-300 rounded-r-lg hover:bg-white hover:shadow-purple-200/30 ${isToolbarVisible ? 'left-[256px]' : 'left-0 rounded-l-none'
+                            }`}
+                        title={isToolbarVisible ? 'Hide toolbar' : 'Show toolbar'}
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                            className={`transition-transform duration-300 ${isToolbarVisible ? '' : 'rotate-180'}`}
+                        >
+                            <polyline points="15 18 9 12 15 6" />
+                        </svg>
+                    </button>
 
                     {/* Toolbar - Zinc frosted glass */}
                     <div className={`h-[calc(100%-32px)] my-4 ml-4 bg-zinc-50/90 backdrop-blur-xl border border-zinc-200/50 overflow-y-auto shadow-2xl transition-all duration-300 ease-in-out flex flex-col rounded-2xl z-20 custom-scrollbar ${isToolbarVisible
