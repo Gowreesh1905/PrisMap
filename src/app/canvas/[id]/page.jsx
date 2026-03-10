@@ -26,7 +26,7 @@ import LiveCursors from '@/components/LiveCursors';
 import CollaborationPanel from '@/components/CollaborationPanel';
 import { useShortcuts } from '@/contexts/ShortcutContext';
 import useCollaboration from '@/hooks/useCollaboration';
-import Sidebar from '@/components/Sidebar';
+
 
 const FLOWCHART_NODE_TYPES = new Set([
     'rectangle', 'diamond', 'circle', 'parallelogram', 'cylinder', 'actor', 'note'
@@ -2145,9 +2145,9 @@ export default function CanvasPage() {
                         y={shape.y}
                         points={[
                             shape.width / 2, 0,
-                            shape.width,      shape.height / 2,
-                            shape.width / 2,  shape.height,
-                            0,                shape.height / 2,
+                            shape.width, shape.height / 2,
+                            shape.width / 2, shape.height,
+                            0, shape.height / 2,
                         ]}
                         fill={shape.fill}
                         closed={true}
@@ -2399,23 +2399,7 @@ export default function CanvasPage() {
 
     return (
         <div className="flex h-screen w-full overflow-hidden bg-[var(--color-bg-base)]">
-            {/* Left Workspace Sidebar */}
-            <Sidebar
-                currentMode={workspaceMode}
-                onModeChange={(mode) => {
-                    if (mode === workspaceMode) {
-                        setIsToolbarVisible(!isToolbarVisible);
-                    } else {
-                        setWorkspaceMode(mode);
-                        setIsToolbarVisible(true);
-                        setCurrentPoints([]);
-                        setIsDrawing(false);
-                        setSelectedId(null);
-                        setSelectedIds([]);
-                        setTool(mode === 'drawing' ? 'pen' : 'select');
-                    }
-                }}
-            />
+
 
             <CollaborationPanel
                 isOpen={showSharePanel}
@@ -2616,6 +2600,58 @@ export default function CanvasPage() {
                         ? 'w-60 opacity-100 p-5'
                         : 'w-0 opacity-0 p-0 border-0 overflow-hidden'
                         }`}>
+
+                        {/* Mode Switcher */}
+                        <div className="mb-5">
+                            <div className="relative flex bg-gray-100 rounded-xl p-1 border border-gray-200/60">
+                                {/* Sliding indicator */}
+                                <div
+                                    className="absolute top-1 bottom-1 rounded-lg bg-gradient-to-br from-purple-600 to-indigo-600 shadow-lg shadow-purple-500/30 transition-all duration-300 ease-in-out"
+                                    style={{
+                                        width: 'calc(50% - 4px)',
+                                        left: workspaceMode === 'drawing' ? '4px' : 'calc(50% + 0px)',
+                                    }}
+                                />
+                                <button
+                                    onClick={() => {
+                                        if (workspaceMode !== 'drawing') {
+                                            setWorkspaceMode('drawing');
+                                            setCurrentPoints([]);
+                                            setIsDrawing(false);
+                                            setSelectedId(null);
+                                            setSelectedIds([]);
+                                            setTool('pen');
+                                        }
+                                    }}
+                                    className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-colors duration-300 ${workspaceMode === 'drawing'
+                                            ? 'text-white'
+                                            : 'text-gray-500 hover:text-gray-700'
+                                        }`}
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /></svg>
+                                    Shapes
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        if (workspaceMode !== 'flowchart') {
+                                            setWorkspaceMode('flowchart');
+                                            setCurrentPoints([]);
+                                            setIsDrawing(false);
+                                            setSelectedId(null);
+                                            setSelectedIds([]);
+                                            setTool('select');
+                                        }
+                                    }}
+                                    className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-colors duration-300 ${workspaceMode === 'flowchart'
+                                            ? 'text-white'
+                                            : 'text-gray-500 hover:text-gray-700'
+                                        }`}
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
+                                    Flowchart
+                                </button>
+                            </div>
+                        </div>
 
                         {workspaceMode === 'flowchart' ? (
                             <>
@@ -3595,13 +3631,11 @@ export default function CanvasPage() {
                                                             <label className="text-[10px] font-bold text-gray-600 block mb-1">Terminal Type</label>
                                                             <div className="grid grid-cols-2 gap-2">
                                                                 <button onClick={() => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, terminalType: 'start' } : el))}
-                                                                    className={`py-1.5 text-[11px] font-bold rounded-xl border transition-colors ${
-                                                                        (selectedElement.terminalType || 'start') === 'start' ? 'bg-green-600 text-white border-green-700' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                                                                    }`}>▶ Start</button>
+                                                                    className={`py-1.5 text-[11px] font-bold rounded-xl border transition-colors ${(selectedElement.terminalType || 'start') === 'start' ? 'bg-green-600 text-white border-green-700' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                                                                        }`}>▶ Start</button>
                                                                 <button onClick={() => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, terminalType: 'end' } : el))}
-                                                                    className={`py-1.5 text-[11px] font-bold rounded-xl border transition-colors ${
-                                                                        selectedElement.terminalType === 'end' ? 'bg-red-600 text-white border-red-700' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                                                                    }`}>⏹ End</button>
+                                                                    className={`py-1.5 text-[11px] font-bold rounded-xl border transition-colors ${selectedElement.terminalType === 'end' ? 'bg-red-600 text-white border-red-700' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                                                                        }`}>⏹ End</button>
                                                             </div>
                                                         </div>
                                                     )}
@@ -3613,13 +3647,11 @@ export default function CanvasPage() {
                                                                 <label className="text-[10px] font-bold text-gray-600 block mb-1">I/O Type</label>
                                                                 <div className="grid grid-cols-2 gap-2">
                                                                     <button onClick={() => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, ioType: 'input' } : el))}
-                                                                        className={`py-1.5 text-[11px] font-bold rounded-xl border transition-colors ${
-                                                                            (selectedElement.ioType || 'input') === 'input' ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-white text-gray-600 border-gray-200'
-                                                                        }`}>↓ Input</button>
+                                                                        className={`py-1.5 text-[11px] font-bold rounded-xl border transition-colors ${(selectedElement.ioType || 'input') === 'input' ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-white text-gray-600 border-gray-200'
+                                                                            }`}>↓ Input</button>
                                                                     <button onClick={() => setElements(prev => prev.map(el => el.id === selectedId ? { ...el, ioType: 'output' } : el))}
-                                                                        className={`py-1.5 text-[11px] font-bold rounded-xl border transition-colors ${
-                                                                            selectedElement.ioType === 'output' ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-white text-gray-600 border-gray-200'
-                                                                        }`}>↑ Output</button>
+                                                                        className={`py-1.5 text-[11px] font-bold rounded-xl border transition-colors ${selectedElement.ioType === 'output' ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-white text-gray-600 border-gray-200'
+                                                                            }`}>↑ Output</button>
                                                                 </div>
                                                             </div>
                                                             <div>
