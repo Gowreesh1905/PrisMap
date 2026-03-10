@@ -18,7 +18,7 @@ When the user asks to add, remove, or modify shapes/text on the canvas, use the 
 When the user asks to generate a new image/logo/graphic, use the 'generateImage' tool.`;
 
         const result = await streamText({
-            model: google('gemini-1.5-pro-latest'),
+            model: google('gemini-2.5-flash'),
             messages,
             system: systemPrompt,
             tools: {
