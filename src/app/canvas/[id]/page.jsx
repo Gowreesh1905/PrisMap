@@ -1447,7 +1447,12 @@ export default function CanvasPage() {
                     container.style.webkitUserSelect = 'none';
                     container.style.webkitTouchCallout = 'none';
 
-                    const preventTouch = (e) => { e.preventDefault(); };
+                    const preventTouch = (e) => {
+                        // Only prevent default for actual finger touches (not touchpad/trackpad)
+                        if (e.touches && e.touches.length > 0) {
+                            e.preventDefault();
+                        }
+                    };
                     container.addEventListener('touchstart', preventTouch, { passive: false });
                     container.addEventListener('touchmove', preventTouch, { passive: false });
 
@@ -1472,8 +1477,10 @@ export default function CanvasPage() {
  * Handle pointer down - start drawing (supports mouse + touch)
  */
     const handlePointerDown = (e) => {
-        // Prevent default browser behaviors like scrolling or text selection
-        if (e.evt && e.evt.preventDefault) e.evt.preventDefault();
+        // NOTE: Do NOT call e.evt.preventDefault() here!
+        // CSS touch-action:none on container handles scroll prevention.
+        // preventDefault on pointerdown suppresses mousedown/click (breaks mouse)
+        // or touchstart/tap (breaks touch) — so we avoid it entirely.
 
         // Only handle primary pointer (ignore secondary touches for pinch)
         if (e.evt && e.evt.isPrimary === false) return;
@@ -1570,7 +1577,7 @@ export default function CanvasPage() {
     * Handle pointer move - continue drawing (supports mouse + touch)
     */
     const handlePointerMove = (e) => {
-        if (e.evt && e.evt.preventDefault) e.evt.preventDefault();
+        // No preventDefault here — touch-action:none handles scroll prevention
 
         // Only handle primary pointer
         if (e.evt && e.evt.isPrimary === false) return;
@@ -1677,7 +1684,6 @@ export default function CanvasPage() {
     * Handle pointer up - finish drawing (supports mouse + touch)
     */
     const handlePointerUp = (e) => {
-        if (e && e.evt && e.evt.preventDefault) e.evt.preventDefault();
         const activeTool = resolveToolForMode(tool, workspaceMode);
         const activeFlowShape = getFlowchartShapeDef(tool);
 
@@ -2088,6 +2094,14 @@ export default function CanvasPage() {
                     if (activeCanvasTool === 'text') setTool('select');
                 }
             },
+            onTap: (e) => {
+                // Touch equivalent of onClick for selection
+                if ((activeCanvasTool === 'select' || activeCanvasTool === 'text') && !isLocked) {
+                    setSelectedId(shape.id);
+                    setSelectedIds([shape.id]);
+                    if (activeCanvasTool === 'text') setTool('select');
+                }
+            },
             onMouseEnter: () => {
                 if (workspaceMode === 'flowchart' && FLOWCHART_NODE_TYPES.has(shape.type)) {
                     setHoveredFlowNodeId(shape.id);
@@ -2119,13 +2133,13 @@ export default function CanvasPage() {
                 e.cancelBubble = true;
                 if (!FLOWCHART_NODE_TYPES.has(shape.type)) return;
                 setSelectedId(shape.id);
-                setActiveCanvasTool('select');
+                setTool('select');
             },
             onDblTap: (e) => {
                 e.cancelBubble = true;
                 if (!FLOWCHART_NODE_TYPES.has(shape.type)) return;
                 setSelectedId(shape.id);
-                setActiveCanvasTool('select');
+                setTool('select');
             },
             stroke: isSelected ? '#8b3dff' : (shape.stroke || (shape.type === 'text' ? undefined : strokeColor)),
             strokeWidth: isSelected ? (shape.strokeWidth || strokeWidth) + 2 : (shape.type === 'text' && !shape.stroke ? undefined : (shape.strokeWidth || strokeWidth)),
